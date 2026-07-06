@@ -88,8 +88,8 @@ def ensure_column(db, table, column, definition):
 
 def ensure_admin(db):
     admin = db.execute("SELECT * FROM players WHERE username = ?", (ADMIN_USERNAME,)).fetchone()
+    salt, password_hash = hash_password(ADMIN_PASSWORD)
     if admin is None:
-        salt, password_hash = hash_password(ADMIN_PASSWORD)
         db.execute(
             """
             INSERT INTO players (username, password_salt, password_hash, is_admin, created_at)
@@ -97,8 +97,15 @@ def ensure_admin(db):
             """,
             (ADMIN_USERNAME, salt, password_hash, int(time.time())),
         )
-    elif admin["is_admin"] != 1:
-        db.execute("UPDATE players SET is_admin = 1 WHERE id = ?", (admin["id"],))
+    else:
+        db.execute(
+            """
+            UPDATE players
+            SET password_salt = ?, password_hash = ?, is_admin = 1, is_disabled = 0
+            WHERE id = ?
+            """,
+            (salt, password_hash, admin["id"]),
+        )
 
 
 def hash_password(password, salt=None):
