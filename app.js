@@ -5,6 +5,7 @@ const state = {
   color: localStorage.getItem("info7_color") || "",
   selected: null,
   room: null,
+  chat: [],
   poller: null,
 };
 
@@ -131,7 +132,12 @@ function renderRoom() {
       ? "Waiting for your friend"
       : `${state.room.turn === "white" ? "White" : "Black"} to move`;
   $("colorText").textContent = `Your color: ${state.color || "-"}`;
-  $("statusText").textContent = `Status: ${state.room.status}`;
+  $("statusText").textContent =
+    state.room.status === "playing"
+      ? "Status: opponent connected, game is live"
+      : "Status: waiting for opponent";
+  $("chatStatus").textContent =
+    state.room.status === "playing" ? "Live chat" : "Chat will be ready when your friend joins";
 
   const movesList = $("movesList");
   movesList.innerHTML = "";
@@ -142,6 +148,7 @@ function renderRoom() {
   }
 
   renderBoard();
+  renderChat();
 }
 
 async function loadRoom() {
@@ -150,12 +157,21 @@ async function loadRoom() {
   renderRoom();
 }
 
+async function loadChat() {
+  if (!state.roomCode) return;
+  const data = await api(`/api/rooms/${state.roomCode}/chat`, { method: "GET" });
+  state.chat = data.messages || [];
+  renderChat();
+}
+
 function startPolling() {
   if (state.poller) clearInterval(state.poller);
   if (!state.roomCode) return;
   loadRoom().catch((error) => message(error.message, true));
+  loadChat().catch(() => {});
   state.poller = setInterval(() => {
     loadRoom().catch((error) => message(error.message, true));
+    loadChat().catch(() => {});
   }, 1500);
 }
 
@@ -183,6 +199,48 @@ async function sendMove(move) {
     $("manualMove").value = "";
     message(`Move sent: ${move}`);
     await loadRoom();
+  } catch (error) {
+    message(error.message, true);
+  }
+}
+
+function renderChat() {
+  const chatMessages = $("chatMessages");
+  if (!chatMessages) return;
+
+  chatMessages.innerHTML = "";
+  for (const item of state.chat || []) {
+    const bubble = document.createElement("div");
+    const isMine = state.player && item.player_id === state.player.id;
+    bubble.className = `chat-message ${isMine ? "mine" : "theirs"}`;
+
+    const author = document.createElement("span");
+    author.className = "chat-author";
+    author.textContent = isMine ? "You" : item.username;
+
+    const text = document.createElement("p");
+    text.textContent = item.message;
+
+    bubble.appendChild(author);
+    bubble.appendChild(text);
+    chatMessages.appendChild(bubble);
+  }
+
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function sendChat() {
+  const input = $("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+
+  try {
+    await api(`/api/rooms/${state.roomCode}/chat`, {
+      method: "POST",
+      body: JSON.stringify({ message: text }),
+    });
+    input.value = "";
+    await loadChat();
   } catch (error) {
     message(error.message, true);
   }
@@ -290,6 +348,14 @@ $("sendMoveBtn").addEventListener("click", () => {
     return;
   }
   sendMove(move);
+});
+
+$("sendChatBtn").addEventListener("click", sendChat);
+$("chatInput").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    sendChat();
+  }
 });
 
 checkServer();

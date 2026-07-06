@@ -73,6 +73,14 @@ def init_db():
                 fen_after TEXT NOT NULL,
                 created_at INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                player_id INTEGER NOT NULL REFERENCES players(id),
+                message TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
             """
         )
         ensure_column(db, "players", "is_admin", "INTEGER NOT NULL DEFAULT 0")
@@ -224,6 +232,15 @@ def require_admin(handler):
     return player
 
 
+def room_for_player(db, code, player):
+    room = db.execute("SELECT * FROM rooms WHERE code = ?", (code,)).fetchone()
+    if room is None:
+        return None, "room_not_found"
+    if player["id"] not in (room["white_player_id"], room["black_player_id"]):
+        return None, "not_in_room"
+    return room, None
+
+
 class ChessHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         json_response(self, 200, {"ok": True})
@@ -286,6 +303,32 @@ class ChessHandler(BaseHTTPRequestHandler):
                     "moves": [dict(move) for move in moves],
                 },
             )
+            return
+
+        if len(path) == 4 and path[:2] == ["api", "rooms"] and path[3] == "chat":
+            player = auth_player(self)
+            if player is None:
+                json_response(self, 401, {"error": "login_required"})
+                return
+            code = path[2].upper()
+            with connect_db() as db:
+                room, error = room_for_player(db, code, player)
+                if error:
+                    json_response(self, 404 if error == "room_not_found" else 403, {"error": error})
+                    return
+                messages = db.execute(
+                    """
+                    SELECT chat_messages.id, chat_messages.message, chat_messages.created_at,
+                           players.id AS player_id, players.username
+                    FROM chat_messages
+                    JOIN players ON players.id = chat_messages.player_id
+                    WHERE chat_messages.room_id = ?
+                    ORDER BY chat_messages.id ASC
+                    LIMIT 200
+                    """,
+                    (room["id"],),
+                ).fetchall()
+            json_response(self, 200, {"messages": [dict(message) for message in messages]})
             return
 
         if path == ["api", "admin", "players"]:
@@ -472,6 +515,31 @@ class ChessHandler(BaseHTTPRequestHandler):
                     (player["id"], int(time.time()), room["id"]),
                 )
             json_response(self, 200, {"code": code, "color": "black"})
+            return
+
+        if len(path) == 4 and path[:2] == ["api", "rooms"] and path[3] == "chat":
+            code = path[2].upper()
+            message = str(data.get("message", "")).strip()
+            if not message:
+                json_response(self, 400, {"error": "empty_message"})
+                return
+            if len(message) > 400:
+                json_response(self, 400, {"error": "message_too_long"})
+                return
+
+            with connect_db() as db:
+                room, error = room_for_player(db, code, player)
+                if error:
+                    json_response(self, 404 if error == "room_not_found" else 403, {"error": error})
+                    return
+                db.execute(
+                    """
+                    INSERT INTO chat_messages (room_id, player_id, message, created_at)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (room["id"], player["id"], message, int(time.time())),
+                )
+            json_response(self, 201, {"ok": True})
             return
 
         if len(path) == 4 and path[:2] == ["api", "rooms"] and path[3] == "moves":
