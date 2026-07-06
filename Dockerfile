@@ -2,11 +2,10 @@ FROM gcc:15 AS engine-builder
 
 WORKDIR /app
 COPY . .
-RUN g++ -std=c++17 -Wall -Wextra -include cstdlib \
+RUN g++ -std=c++17 -Wall -Wextra \
     -I /app \
     /app/online-server/engine.cpp \
     /app/board.cpp \
-    /app/game.cpp \
     /app/mask.cpp \
     -o /app/online-server/engine
 
