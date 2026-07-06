@@ -1,4 +1,5 @@
 #include<iostream>
+#include<cstdlib>
 #include<cctype>
 #include "game.hpp"
 #include "mask.hpp"
