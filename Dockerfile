@@ -4,17 +4,15 @@ WORKDIR /app
 COPY . .
 RUN g++ -std=c++17 -Wall -Wextra \
     -I /app \
-    /app/online-server/engine.cpp \
+    /app/engine.cpp \
     /app/board.cpp \
     /app/mask.cpp \
-    -o /app/online-server/engine
+    -o /app/engine
 
 FROM python:3.13-slim
 
 WORKDIR /app
-COPY --from=engine-builder /app/online-server /app/online-server
-
-WORKDIR /app/online-server
+COPY --from=engine-builder /app /app
 ENV PORT=8080
 EXPOSE 8080
 CMD ["python", "server.py"]
