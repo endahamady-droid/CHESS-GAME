@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>INFO7 Admin</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <section class="panel hero">
+        <p class="eyebrow">INFO7 Admin</p>
+        <h1>Manage accounts</h1>
+        <p class="muted">Disable players, enable players, and promote trusted users to admin.</p>
+      </section>
+
+      <section class="panel" id="loginPanel">
+        <h2>Admin login</h2>
+        <div class="grid two">
+          <label>
+            Username
+            <input id="username" autocomplete="username" value="admin">
+          </label>
+          <label>
+            Password
+            <input id="password" type="password" autocomplete="current-password" placeholder="admin1234">
+          </label>
+        </div>
+        <div class="actions">
+          <button id="loginBtn">Login</button>
+          <a class="button-link secondary-link" href="/">Back to game</a>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="adminPanel">
+        <div class="topline">
+          <div>
+            <p class="eyebrow">Dashboard</p>
+            <h2>Players</h2>
+          </div>
+          <button class="secondary" id="refreshBtn">Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Stats</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="playersTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="roomsPanel">
+        <h2>Recent rooms</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Code</th>
+                <th>White</th>
+                <th>Black</th>
+                <th>Status</th>
+                <th>Turn</th>
+              </tr>
+            </thead>
+            <tbody id="roomsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel hidden" id="databasePanel">
+        <h2>Database</h2>
+        <div class="database-grid">
+          <p><strong>Path:</strong> <span id="databasePath">-</span></p>
+          <p><strong>Size:</strong> <span id="databaseSize">-</span></p>
+          <p><strong>Players:</strong> <span id="databasePlayers">-</span></p>
+          <p><strong>Rooms:</strong> <span id="databaseRooms">-</span></p>
+          <p><strong>Moves:</strong> <span id="databaseMoves">-</span></p>
+        </div>
+      </section>
+
+      <p class="message" id="message"></p>
+    </main>
+    <script src="admin.js"></script>
+  </body>
+</html>
