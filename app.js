@@ -9,18 +9,18 @@ const state = {
 };
 
 const pieces = {
-  K: "WK",
-  Q: "WQ",
-  R: "WR",
-  B: "WB",
-  N: "WN",
-  P: "WP",
-  k: "BK",
-  q: "BQ",
-  r: "BR",
-  b: "BB",
-  n: "BN",
-  p: "BP",
+  K: "K",
+  Q: "Q",
+  R: "R",
+  B: "B",
+  N: "N",
+  P: "",
+  k: "K",
+  q: "Q",
+  r: "R",
+  b: "B",
+  n: "N",
+  p: "",
 };
 
 const files = "abcdefgh";
@@ -109,7 +109,9 @@ function renderBoard() {
       const piece = board[row][col];
       if (piece) {
         const pieceElement = document.createElement("span");
-        pieceElement.className = piece === piece.toUpperCase() ? "piece white-piece" : "piece black-piece";
+        const colorClass = piece === piece.toUpperCase() ? "white-piece" : "black-piece";
+        const typeClass = `piece-${piece.toLowerCase()}`;
+        pieceElement.className = `piece ${colorClass} ${typeClass}`;
         pieceElement.textContent = pieces[piece] || "";
         square.appendChild(pieceElement);
       }

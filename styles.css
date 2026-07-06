@@ -186,7 +186,7 @@ button.secondary:hover {
   border: 0;
   border-radius: 0;
   padding: 0;
-  font-size: clamp(0.9rem, 3vw, 1.7rem);
+  font-size: clamp(0.8rem, 2.2vw, 1.35rem);
   line-height: 1;
   font-family: Arial, Helvetica, sans-serif;
 }
@@ -224,11 +224,14 @@ button.secondary:hover {
 .piece {
   display: grid;
   place-items: center;
-  width: 72%;
-  height: 72%;
+  position: relative;
+  width: 68%;
+  height: 68%;
   border-radius: 999px;
   font-weight: 900;
+  letter-spacing: 0;
   pointer-events: none;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.35);
 }
 
 .black-piece {
@@ -241,6 +244,45 @@ button.secondary:hover {
   color: #111827;
   background: #fff7ed;
   border: 2px solid #111827;
+}
+
+.piece-p {
+  width: 52%;
+  height: 52%;
+}
+
+.piece-r {
+  border-radius: 8px;
+}
+
+.piece-n {
+  border-radius: 45% 55% 45% 55%;
+  transform: rotate(-10deg);
+}
+
+.piece-b {
+  border-radius: 999px 999px 45% 45%;
+}
+
+.piece-q::before,
+.piece-k::before {
+  content: "";
+  position: absolute;
+  width: 58%;
+  height: 13%;
+  border-radius: 999px;
+  top: -16%;
+  background: currentColor;
+}
+
+.piece-k::after {
+  content: "";
+  position: absolute;
+  width: 13%;
+  height: 56%;
+  border-radius: 999px;
+  top: -32%;
+  background: currentColor;
 }
 
 .moves {
