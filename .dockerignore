@@ -1,0 +1,7 @@
+*.o
+*.exe
+*.db
+*.db-journal
+__pycache__/
+*.pyc
+.git/
