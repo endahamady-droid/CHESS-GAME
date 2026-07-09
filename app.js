@@ -77,12 +77,6 @@ const levelQuizState = {
   questions: [],
 };
 
-const oauthProviders = {
-  google: false,
-  apple: false,
-  facebook: false,
-};
-
 function $(id) {
   return document.getElementById(id);
 }
@@ -92,13 +86,6 @@ function message(text, isError = false) {
   $("message").style.color = isError ? "#b91c1c" : "#166534";
   $("message").classList.toggle("error", isError);
   $("message").classList.toggle("ok", Boolean(text && !isError));
-}
-
-function socialMessage(text, isError = false) {
-  $("socialFeedback").textContent = text;
-  $("socialFeedback").classList.toggle("error", isError);
-  $("socialFeedback").classList.toggle("ok", Boolean(text && !isError));
-  message(text, isError);
 }
 
 async function api(path, options = {}) {
@@ -474,26 +461,6 @@ async function checkServer() {
   }
 }
 
-async function loadOAuthProviders() {
-  try {
-    const data = await api("/api/auth/providers", { method: "GET" });
-    Object.assign(oauthProviders, data);
-    for (const button of document.querySelectorAll(".social-btn")) {
-      const provider = button.dataset.provider;
-      const configured = Boolean(oauthProviders[provider]);
-      button.classList.toggle("provider-missing", !configured);
-      button.title = configured
-        ? `Continue with ${provider}`
-        : `${provider} login needs OAuth keys in Render first`;
-    }
-    if (!oauthProviders.google && !oauthProviders.apple && !oauthProviders.facebook) {
-      socialMessage("Social login is not configured yet. Use username/password for now.", true);
-    }
-  } catch {
-    socialMessage("Could not check social login providers. Use username/password for now.", true);
-  }
-}
-
 async function loadProfile() {
   if (!state.token) return;
   try {
@@ -535,6 +502,26 @@ function updateProfileUI() {
   $("profileRecord").textContent = `${state.player.wins || 0}W / ${state.player.losses || 0}L / ${state.player.draws || 0}D`;
   $("profileQuiz").textContent = `Quiz level ${state.player.quiz_level_reached || 1}`;
   $("profileGames").textContent = `${state.player.games_played || 0} games`;
+  $("twofaStatus").textContent = `2FA status: ${state.player.twofa_enabled ? "on" : "off"}`;
+  $("setup2faBtn").classList.toggle("hidden", Boolean(state.player.twofa_enabled));
+  $("disable2faBtn").classList.toggle("hidden", !state.player.twofa_enabled);
+}
+
+async function completeLogin(data) {
+  state.token = data.token;
+  state.player = data.player;
+  saveSession();
+  $("twofaLoginPanel").classList.add("hidden");
+  if (data.player.is_admin) {
+    storage.setItem("info7_admin_token", data.token);
+    window.location.href = "/admin.html";
+    return;
+  }
+  showPanels();
+  await loadProfile();
+  message("Logged in.");
+  maybeOpenLevelQuiz();
+  startPolling();
 }
 
 $("registerBtn").addEventListener("click", async () => {
@@ -563,19 +550,31 @@ $("loginBtn").addEventListener("click", async () => {
         password: $("password").value,
       }),
     });
-    state.token = data.token;
-    state.player = data.player;
-    saveSession();
-    if (data.player.is_admin) {
-      storage.setItem("info7_admin_token", data.token);
-      window.location.href = "/admin.html";
+    if (data.requires_2fa) {
+      storage.setItem("info7_2fa_challenge", data.challenge);
+      $("twofaLoginPanel").classList.remove("hidden");
+      $("twofaLoginCode").focus();
+      message("Enter your authenticator code.");
       return;
     }
-    showPanels();
-    await loadProfile();
-    message("Logged in.");
-    maybeOpenLevelQuiz();
-    startPolling();
+    await completeLogin(data);
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+
+$("twofaLoginBtn").addEventListener("click", async () => {
+  try {
+    const data = await api("/api/login/2fa", {
+      method: "POST",
+      body: JSON.stringify({
+        challenge: storage.getItem("info7_2fa_challenge"),
+        code: $("twofaLoginCode").value,
+      }),
+    });
+    storage.removeItem("info7_2fa_challenge");
+    $("twofaLoginCode").value = "";
+    await completeLogin(data);
   } catch (error) {
     message(error.message, true);
   }
@@ -681,35 +680,57 @@ $("joinCode").addEventListener("keydown", (event) => {
   }
 });
 
-for (const button of document.querySelectorAll(".social-btn")) {
-  button.addEventListener("click", async () => {
-    const provider = button.dataset.provider;
-    if (!oauthProviders[provider]) {
-      socialMessage(
-        `${provider} login is not active yet. Add ${provider.toUpperCase()}_CLIENT_ID and ${provider.toUpperCase()}_CLIENT_SECRET in Render first.`,
-        true,
-      );
-      return;
-    }
-    const originalText = button.textContent;
-    button.textContent = "Setting up...";
-    button.disabled = true;
-    try {
-      const response = await fetch(`/api/auth/${provider}/start`, { method: "GET", credentials: "include" });
-      const data = await response.json();
-      if (data.redirect_url) {
-        window.location.href = data.redirect_url;
-        return;
-      }
-      socialMessage(data.message || data.error || `${provider} login is not configured yet.`, true);
-    } catch (error) {
-      socialMessage(error.message, true);
-    } finally {
-      button.textContent = originalText;
-      button.disabled = false;
-    }
-  });
-}
+$("twofaLoginCode").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    $("twofaLoginBtn").click();
+  }
+});
+
+$("setup2faBtn").addEventListener("click", async () => {
+  try {
+    const data = await api("/api/2fa/setup", { method: "GET" });
+    $("twofaSecretText").textContent = data.manual_code;
+    $("twofaSetupPanel").classList.remove("hidden");
+    message("Add the key to your authenticator app, then enter the 6-digit code.");
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+
+$("enable2faBtn").addEventListener("click", async () => {
+  try {
+    const data = await api("/api/2fa/enable", {
+      method: "POST",
+      body: JSON.stringify({ code: $("twofaEnableCode").value }),
+    });
+    state.player = data.player;
+    saveSession();
+    $("twofaEnableCode").value = "";
+    $("twofaSetupPanel").classList.add("hidden");
+    updateProfileUI();
+    message("2FA enabled.");
+  } catch (error) {
+    message(error.message, true);
+  }
+});
+
+$("disable2faBtn").addEventListener("click", async () => {
+  const code = window.prompt("Enter your authenticator code to disable 2FA:");
+  if (!code) return;
+  try {
+    const data = await api("/api/2fa/disable", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    });
+    state.player = data.player;
+    saveSession();
+    updateProfileUI();
+    message("2FA disabled.");
+  } catch (error) {
+    message(error.message, true);
+  }
+});
 
 function enhanceButtons() {
   for (const element of document.querySelectorAll("button:not(.square), .button-link")) {
@@ -933,7 +954,6 @@ function observeScrollReveals() {
 }
 
 checkServer();
-loadOAuthProviders();
 showPanels();
 renderBoard();
 enhanceButtons();

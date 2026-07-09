@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import time
 from http import cookies
-from urllib.parse import parse_qs
+from urllib.parse import quote
 
 try:
     import bcrypt
@@ -47,6 +47,7 @@ RATE_LIMITS = {
     "moves": (60, RATE_LIMIT_WINDOW),
 }
 RATE_BUCKETS = {}
+TWOFA_CHALLENGES = {}
 
 
 class Database:
@@ -111,6 +112,8 @@ def init_db():
                 quiz_level_reached INTEGER NOT NULL DEFAULT 1,
                 quiz_score INTEGER NOT NULL DEFAULT 0,
                 games_played INTEGER NOT NULL DEFAULT 0,
+                twofa_secret TEXT,
+                twofa_enabled INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             );
 
@@ -180,6 +183,8 @@ def init_db():
         ensure_column(db, "players", "quiz_level_reached", "INTEGER NOT NULL DEFAULT 1")
         ensure_column(db, "players", "quiz_score", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "players", "games_played", "INTEGER NOT NULL DEFAULT 0")
+        ensure_column(db, "players", "twofa_secret", "TEXT")
+        ensure_column(db, "players", "twofa_enabled", "INTEGER NOT NULL DEFAULT 0")
         ensure_admin(db)
 
 
@@ -299,6 +304,52 @@ def create_session(db, player_id):
         (token, player_id, int(time.time())),
     )
     return token
+
+
+def make_2fa_secret():
+    return base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
+
+
+def hotp(secret, counter):
+    padded = secret + "=" * ((8 - len(secret) % 8) % 8)
+    key = base64.b32decode(padded.encode("ascii"), casefold=True)
+    msg = counter.to_bytes(8, "big")
+    digest = hmac.new(key, msg, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code = int.from_bytes(digest[offset : offset + 4], "big") & 0x7FFFFFFF
+    return f"{code % 1_000_000:06d}"
+
+
+def verify_totp(secret, code, window=1):
+    code = str(code or "").strip().replace(" ", "")
+    if not code.isdigit() or len(code) != 6 or not secret:
+        return False
+    counter = int(time.time() // 30)
+    for step in range(-window, window + 1):
+        if hmac.compare_digest(hotp(secret, counter + step), code):
+            return True
+    return False
+
+
+def new_2fa_challenge(player_id):
+    token = secrets.token_urlsafe(24)
+    TWOFA_CHALLENGES[token] = {"player_id": player_id, "created_at": int(time.time())}
+    return token
+
+
+def consume_2fa_challenge(token):
+    challenge = TWOFA_CHALLENGES.pop(str(token or ""), None)
+    if not challenge:
+        return None
+    if int(time.time()) - challenge["created_at"] > 5 * 60:
+        return None
+    return challenge["player_id"]
+
+
+def otpauth_uri(username, secret):
+    label = quote(f"INFO7 Chess:{username}")
+    issuer = quote("INFO7 Chess")
+    return f"otpauth://totp/{label}?secret={secret}&issuer={issuer}&algorithm=SHA1&digits=6&period=30"
 
 
 def get_cookie_token(handler):
@@ -510,6 +561,7 @@ def public_player(row):
         "quiz_level_reached": row["quiz_level_reached"],
         "quiz_score": row["quiz_score"],
         "games_played": row["games_played"],
+        "twofa_enabled": bool(row["twofa_enabled"]),
     }
 
 
@@ -599,31 +651,21 @@ class ChessHandler(BaseHTTPRequestHandler):
             json_response(self, 200, {"history": [dict(item) for item in history]})
             return
 
-        if path == ["api", "auth", "providers"]:
+        if path == ["api", "2fa", "setup"]:
+            player = auth_player(self)
+            if player is None:
+                json_response(self, 401, {"error": "login_required"})
+                return
+            secret = player["twofa_secret"] or make_2fa_secret()
+            with connect_db() as db:
+                db.execute("UPDATE players SET twofa_secret = ? WHERE id = ?", (secret, player["id"]))
             json_response(
                 self,
                 200,
                 {
-                    "google": bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET")),
-                    "apple": bool(os.environ.get("APPLE_CLIENT_ID") and os.environ.get("APPLE_CLIENT_SECRET")),
-                    "facebook": bool(os.environ.get("FACEBOOK_CLIENT_ID") and os.environ.get("FACEBOOK_CLIENT_SECRET")),
-                },
-            )
-            return
-
-        if len(path) == 4 and path[:2] == ["api", "auth"] and path[3] == "start":
-            provider = path[2]
-            client_id = os.environ.get(f"{provider.upper()}_CLIENT_ID", "")
-            if provider not in ("google", "apple", "facebook") or not client_id:
-                json_response(self, 501, {"error": "oauth_provider_not_configured"})
-                return
-            json_response(
-                self,
-                501,
-                {
-                    "error": "oauth_callback_not_configured",
-                    "provider": provider,
-                    "message": "Create the OAuth app, set provider secrets on Render, then wire the callback URL.",
+                    "secret": secret,
+                    "otpauth_url": otpauth_uri(player["username"], secret),
+                    "manual_code": secret,
                 },
             )
             return
@@ -790,8 +832,39 @@ class ChessHandler(BaseHTTPRequestHandler):
                     record_login_attempt(ip, username, False)
                     json_response(self, 403, {"error": "account_disabled"})
                     return
+                if player["twofa_enabled"] == 1:
+                    challenge = new_2fa_challenge(player["id"])
+                    record_login_attempt(ip, username, True)
+                    json_response(
+                        self,
+                        200,
+                        {
+                            "requires_2fa": True,
+                            "challenge": challenge,
+                            "player_hint": {"username": player["username"]},
+                        },
+                    )
+                    return
                 token = create_session(db, player["id"])
             record_login_attempt(ip, username, True)
+            json_response(self, 200, {"token": token, "player": public_player(player)}, cookie_token=token)
+            return
+
+        if path == ["api", "login", "2fa"]:
+            if rate_limited(self, "login", f"2fa:{client_ip(self)}"):
+                return
+            challenge = str(data.get("challenge", ""))
+            code = str(data.get("code", ""))
+            player_id = consume_2fa_challenge(challenge)
+            if player_id is None:
+                json_response(self, 401, {"error": "bad_or_expired_2fa_challenge"})
+                return
+            with connect_db() as db:
+                player = db.execute("SELECT * FROM players WHERE id = ?", (player_id,)).fetchone()
+                if player is None or player["twofa_enabled"] != 1 or not verify_totp(player["twofa_secret"], code):
+                    json_response(self, 401, {"error": "bad_2fa_code"})
+                    return
+                token = create_session(db, player["id"])
             json_response(self, 200, {"token": token, "player": public_player(player)}, cookie_token=token)
             return
 
@@ -827,6 +900,30 @@ class ChessHandler(BaseHTTPRequestHandler):
                     """,
                     (next_level, score, score, player["id"]),
                 )
+                updated = db.execute("SELECT * FROM players WHERE id = ?", (player["id"],)).fetchone()
+            json_response(self, 200, {"player": public_player(updated)})
+            return
+
+        if path == ["api", "2fa", "enable"]:
+            code = str(data.get("code", ""))
+            with connect_db() as db:
+                fresh = db.execute("SELECT * FROM players WHERE id = ?", (player["id"],)).fetchone()
+                if not fresh["twofa_secret"] or not verify_totp(fresh["twofa_secret"], code):
+                    json_response(self, 400, {"error": "bad_2fa_code"})
+                    return
+                db.execute("UPDATE players SET twofa_enabled = 1 WHERE id = ?", (player["id"],))
+                updated = db.execute("SELECT * FROM players WHERE id = ?", (player["id"],)).fetchone()
+            json_response(self, 200, {"player": public_player(updated)})
+            return
+
+        if path == ["api", "2fa", "disable"]:
+            code = str(data.get("code", ""))
+            with connect_db() as db:
+                fresh = db.execute("SELECT * FROM players WHERE id = ?", (player["id"],)).fetchone()
+                if fresh["twofa_enabled"] == 1 and not verify_totp(fresh["twofa_secret"], code):
+                    json_response(self, 400, {"error": "bad_2fa_code"})
+                    return
+                db.execute("UPDATE players SET twofa_enabled = 0, twofa_secret = NULL WHERE id = ?", (player["id"],))
                 updated = db.execute("SELECT * FROM players WHERE id = ?", (player["id"],)).fetchone()
             json_response(self, 200, {"player": public_player(updated)})
             return

@@ -15,7 +15,7 @@ SESSION_TTL_SECONDS=43200
 
 The server runs migrations automatically at startup. It creates/updates:
 
-- `players` with `email`, `elo`, `provider`, `provider_id`, `quiz_level_reached`, `quiz_score`, `games_played`
+- `players` with `email`, `elo`, `provider`, `provider_id`, `quiz_level_reached`, `quiz_score`, `games_played`, `twofa_secret`, `twofa_enabled`
 - `sessions`
 - `rooms`
 - `moves`
@@ -25,30 +25,22 @@ The server runs migrations automatically at startup. It creates/updates:
 
 With `DATABASE_URL`, accounts, ELO, quiz progress, and match history survive redeploys.
 
-## OAuth environment variables
+## Two-factor authentication
 
-Create apps in each provider dashboard, then add these on Render:
+Social login has been removed. Users can secure the classic username/password login with TOTP 2FA.
 
-```text
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-APPLE_CLIENT_ID=...
-APPLE_CLIENT_SECRET=...
-FACEBOOK_CLIENT_ID=...
-FACEBOOK_CLIENT_SECRET=...
-```
+Flow:
 
-Current code exposes provider availability and safe placeholder start routes. Full OAuth callback activation still requires provider callback URLs and app approval:
-
-```text
-https://your-render-url.onrender.com/api/auth/google/callback
-https://your-render-url.onrender.com/api/auth/apple/callback
-https://your-render-url.onrender.com/api/auth/facebook/callback
-```
+1. Login with username/password.
+2. In Profile, click `Set up 2FA`.
+3. Add the manual key to Google Authenticator, Authy, Microsoft Authenticator, or another TOTP app.
+4. Enter the 6-digit code to enable 2FA.
+5. Future logins require password + authenticator code.
 
 ## Security included
 
 - bcrypt password hashes, cost 12
+- TOTP 2FA for classic login
 - HTTP-only session cookie plus legacy bearer token compatibility
 - session expiration
 - parameterized SQL queries

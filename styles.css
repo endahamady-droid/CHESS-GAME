@@ -448,50 +448,6 @@ button.secondary:hover,
   align-items: end;
 }
 
-.social-login {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.social-btn.provider-missing {
-  opacity: 0.68;
-  border-style: dashed;
-}
-
-.social-feedback {
-  min-height: 22px;
-  margin: -4px 0 14px;
-  color: var(--muted);
-  font-weight: 800;
-}
-
-.social-feedback.error {
-  color: var(--warning);
-}
-
-.social-feedback.ok {
-  color: var(--success);
-}
-
-.divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 8px 0 16px;
-  color: var(--muted);
-  font-weight: 900;
-}
-
-.divider::before,
-.divider::after {
-  content: "";
-  height: 1px;
-  flex: 1;
-  background: var(--line);
-}
-
 .elo-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -565,6 +521,35 @@ button.secondary:hover,
 
 .history-list .elo-down {
   color: var(--danger);
+}
+
+.twofa-login,
+.twofa-card,
+.twofa-setup {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.twofa-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.twofa-setup code {
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--primary);
+  font-weight: 900;
+  overflow-wrap: anywhere;
 }
 
 .quiz-modal {
@@ -1405,7 +1390,6 @@ th {
 
   .quiz-options,
   .stats-grid,
-  .social-login,
   .profile-stats {
     grid-template-columns: 1fr;
   }
