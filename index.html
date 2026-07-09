@@ -72,6 +72,70 @@
         </div>
       </section>
 
+      <section class="lobby-extras" id="lobbyExtras">
+        <section class="panel quiz-panel reveal-on-scroll">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Chess Quiz</p>
+              <h2>Warm up before the match</h2>
+            </div>
+            <span class="mini-label" id="quizProgress">1 / 5</span>
+          </div>
+          <div class="quiz-shell" id="quizShell">
+            <p class="quiz-question" id="quizQuestion">Loading question...</p>
+            <div class="quiz-options" id="quizOptions"></div>
+            <p class="quizFeedback" id="quizFeedback"></p>
+            <button class="secondary hidden" id="quizReplayBtn">Play again</button>
+          </div>
+        </section>
+
+        <section class="how-grid">
+          <article class="panel how-card reveal-on-scroll">
+            <span class="how-icon">01</span>
+            <h3>Create a room</h3>
+            <p class="muted">Start a private arena and get a unique code instantly.</p>
+          </article>
+          <article class="panel how-card reveal-on-scroll">
+            <span class="how-icon">02</span>
+            <h3>Share the code</h3>
+            <p class="muted">Send the room code to your friend so they can join your board.</p>
+          </article>
+          <article class="panel how-card reveal-on-scroll">
+            <span class="how-icon">03</span>
+            <h3>Play live</h3>
+            <p class="muted">Moves, chat, and room status update while the game runs online.</p>
+          </article>
+        </section>
+
+        <section class="lobby-grid">
+          <section class="panel stats-panel reveal-on-scroll">
+            <p class="eyebrow">Live pulse</p>
+            <h2>Arena stats</h2>
+            <div class="stats-grid">
+              <div>
+                <strong class="stat-number" data-count-target="1284">0</strong>
+                <span>games played</span>
+              </div>
+              <div>
+                <strong class="stat-number" data-count-target="37">0</strong>
+                <span>players online</span>
+              </div>
+              <div>
+                <strong class="stat-number" data-count-target="912">0</strong>
+                <span>moves today</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel fact-panel reveal-on-scroll">
+            <p class="eyebrow">Did you know?</p>
+            <h2>Chess spark</h2>
+            <p class="fact-text" id="factText">Loading chess fact...</p>
+            <div class="fact-dots" id="factDots" aria-hidden="true"></div>
+          </section>
+        </section>
+      </section>
+
       <section class="game-layout hidden" id="gamePanel">
         <section class="panel board-panel reveal-card">
           <div class="topline game-topline">

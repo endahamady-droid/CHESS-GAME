@@ -9,6 +9,7 @@ const state = {
   room: null,
   chat: [],
   poller: null,
+  renderedBoard: [],
 };
 
 const pieces = {
@@ -27,6 +28,47 @@ const pieces = {
 };
 
 const files = "abcdefgh";
+
+const quizQuestions = [
+  {
+    question: "Which piece can move in an L shape?",
+    options: ["Knight", "Bishop", "Rook", "Queen"],
+    answer: 0,
+  },
+  {
+    question: "What is the name of the move where the king and rook move together?",
+    options: ["Fork", "Castling", "Promotion", "En passant"],
+    answer: 1,
+  },
+  {
+    question: "Which opening begins with 1. e4 e5 2. Nf3 Nc6 3. Bb5?",
+    options: ["Sicilian Defense", "French Defense", "Ruy Lopez", "London System"],
+    answer: 2,
+  },
+  {
+    question: "What happens when a pawn reaches the last rank?",
+    options: ["It is removed", "It promotes", "It becomes a king", "The game ends"],
+    answer: 1,
+  },
+  {
+    question: "What is checkmate?",
+    options: ["A captured queen", "A draw offer", "A king in unavoidable check", "A pawn promotion"],
+    answer: 2,
+  },
+];
+
+const chessFacts = [
+  "The longest possible chess game is often estimated at thousands of moves under older rule interpretations.",
+  "The queen was once a much weaker piece before modern chess rules made it the most powerful attacker.",
+  "The word checkmate comes from a phrase meaning the king is helpless.",
+  "A knight always changes square color every time it moves.",
+  "The first moves of a game are called the opening, and many have names that are centuries old.",
+];
+
+const quizState = {
+  index: 0,
+  score: 0,
+};
 
 function $(id) {
   return document.getElementById(id);
@@ -77,6 +119,7 @@ function showPanels() {
   $("authPanel").classList.toggle("hidden", loggedIn);
   $("roomPanel").classList.toggle("hidden", !loggedIn || inGame);
   $("gamePanel").classList.toggle("hidden", !inGame);
+  $("lobbyExtras").classList.toggle("hidden", inGame);
   document.body.classList.toggle("game-view", inGame);
   document.body.dataset.playerColor = state.color || "";
   if (loggedIn) $("playerName").textContent = state.player.username;
@@ -130,44 +173,79 @@ function lastMoveSquares() {
   return [lastMove.slice(0, 2), lastMove.slice(2, 4)];
 }
 
-function renderBoard() {
-  const boardElement = $("board");
-  boardElement.innerHTML = "";
-  const board = currentBoard();
-  const lastSquares = lastMoveSquares();
+function ensureBoardSquares(boardElement) {
+  if (boardElement.dataset.ready === "true" && boardElement.children.length === 64) return;
 
+  boardElement.innerHTML = "";
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
       const square = document.createElement("button");
       const name = squareName(row, col);
-      square.className = `square ${(row + col) % 2 === 0 ? "light" : "dark"}`;
-      if (state.selected === name) square.classList.add("selected");
-      if (lastSquares.includes(name)) square.classList.add("last-move");
-      if (!canMoveNow()) square.classList.add("locked");
+      square.dataset.square = name;
+      square.dataset.row = String(row);
+      square.dataset.col = String(col);
+      square.title = name;
       if (row === 7) square.dataset.file = files[col];
       if (col === 0) square.dataset.rank = String(8 - row);
-
-      const piece = board[row][col];
-      if (piece) {
-        const pieceElement = document.createElement("span");
-        const colorClass = pieceColor(piece) === "white" ? "white-piece" : "black-piece";
-        const typeClass = `piece-${piece.toLowerCase()}`;
-        pieceElement.className = `piece ${colorClass} ${typeClass}`;
-        pieceElement.textContent = pieces[piece] || "";
-        square.appendChild(pieceElement);
-        if (pieceColor(piece) === state.color) square.classList.add("own-piece");
-      }
-
       if (row === 7) {
         const fileLabel = document.createElement("span");
         fileLabel.className = "coord-file";
         fileLabel.textContent = files[col];
         square.appendChild(fileLabel);
       }
-
-      square.title = name;
       square.addEventListener("click", (event) => selectSquare(name, event));
       boardElement.appendChild(square);
+    }
+  }
+  boardElement.dataset.ready = "true";
+  state.renderedBoard = Array(64).fill(null);
+}
+
+function updateSquarePiece(square, piece, previousPiece) {
+  let pieceElement = square.querySelector(".piece");
+  if (!piece) {
+    if (pieceElement) {
+      pieceElement.dataset.removing = "true";
+      pieceElement.classList.add("piece-exit");
+      window.setTimeout(() => {
+        if (pieceElement.dataset.removing === "true") pieceElement.remove();
+      }, 180);
+    }
+    return;
+  }
+
+  const colorClass = pieceColor(piece) === "white" ? "white-piece" : "black-piece";
+  const typeClass = `piece-${piece.toLowerCase()}`;
+  if (!pieceElement) {
+    pieceElement = document.createElement("span");
+    square.prepend(pieceElement);
+  }
+  delete pieceElement.dataset.removing;
+  pieceElement.className = `piece ${colorClass} ${typeClass}`;
+  pieceElement.textContent = pieces[piece] || "";
+  pieceElement.classList.toggle("piece-moved", Boolean(previousPiece !== undefined && previousPiece !== piece));
+}
+
+function renderBoard() {
+  const boardElement = $("board");
+  ensureBoardSquares(boardElement);
+  const board = currentBoard();
+  const lastSquares = lastMoveSquares();
+
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 8; col++) {
+      const index = row * 8 + col;
+      const square = boardElement.children[index];
+      const name = squareName(row, col);
+      const piece = board[row][col];
+      const previousPiece = state.renderedBoard[index];
+      square.className = `square ${(row + col) % 2 === 0 ? "light" : "dark"}`;
+      if (state.selected === name) square.classList.add("selected");
+      if (lastSquares.includes(name)) square.classList.add("last-move");
+      if (!canMoveNow()) square.classList.add("locked");
+      if (pieceColor(piece) === state.color) square.classList.add("own-piece");
+      if (piece !== previousPiece) updateSquarePiece(square, piece, previousPiece);
+      state.renderedBoard[index] = piece;
     }
   }
 }
@@ -494,6 +572,22 @@ $("chatInput").addEventListener("keydown", (event) => {
   }
 });
 
+for (const input of [$("username"), $("password")]) {
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      $("loginBtn").click();
+    }
+  });
+}
+
+$("joinCode").addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    $("joinRoomBtn").click();
+  }
+});
+
 function enhanceButtons() {
   for (const element of document.querySelectorAll("button:not(.square), .button-link")) {
     element.addEventListener("click", (event) => {
@@ -508,8 +602,133 @@ function enhanceButtons() {
   }
 }
 
+function renderQuiz() {
+  const question = quizQuestions[quizState.index];
+  $("quizProgress").textContent = `${quizState.index + 1} / ${quizQuestions.length}`;
+  $("quizQuestion").textContent = question.question;
+  $("quizFeedback").textContent = "";
+  $("quizReplayBtn").classList.add("hidden");
+
+  const options = $("quizOptions");
+  options.innerHTML = "";
+  for (const [index, option] of question.options.entries()) {
+    const button = document.createElement("button");
+    button.className = "quiz-option secondary";
+    button.textContent = option;
+    button.addEventListener("click", () => answerQuiz(index));
+    options.appendChild(button);
+  }
+}
+
+function answerQuiz(answerIndex) {
+  const question = quizQuestions[quizState.index];
+  const isCorrect = answerIndex === question.answer;
+  if (isCorrect) quizState.score++;
+
+  for (const [index, button] of $("quizOptions").querySelectorAll("button").entries()) {
+    button.disabled = true;
+    button.classList.toggle("correct", index === question.answer);
+    button.classList.toggle("wrong", index === answerIndex && !isCorrect);
+  }
+
+  $("quizFeedback").textContent = isCorrect ? "Correct. Nice eye." : "Not this time. Keep warming up.";
+  window.setTimeout(() => {
+    quizState.index++;
+    if (quizState.index >= quizQuestions.length) {
+      showQuizResult();
+      return;
+    }
+    renderQuiz();
+  }, 850);
+}
+
+function showQuizResult() {
+  $("quizProgress").textContent = "Complete";
+  $("quizQuestion").textContent = `Score: ${quizState.score} / ${quizQuestions.length}`;
+  $("quizOptions").innerHTML = "";
+  $("quizFeedback").textContent =
+    quizState.score >= 4 ? "Sharp prep. You are ready for the board." : "Good warmup. Replay and sharpen the tactics.";
+  $("quizReplayBtn").classList.remove("hidden");
+}
+
+$("quizReplayBtn").addEventListener("click", () => {
+  quizState.index = 0;
+  quizState.score = 0;
+  renderQuiz();
+});
+
+function animateStats() {
+  for (const element of document.querySelectorAll(".stat-number")) {
+    if (element.dataset.done === "true") continue;
+    element.dataset.done = "true";
+    const target = Number(element.dataset.countTarget || "0");
+    const duration = 1100;
+    const start = performance.now();
+
+    function tick(now) {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      element.textContent = Math.round(target * eased).toLocaleString();
+      if (progress < 1) window.requestAnimationFrame(tick);
+    }
+
+    window.requestAnimationFrame(tick);
+  }
+}
+
+function startFactCarousel() {
+  let factIndex = 0;
+  const dots = $("factDots");
+  dots.innerHTML = "";
+  for (let i = 0; i < chessFacts.length; i++) {
+    const dot = document.createElement("span");
+    dots.appendChild(dot);
+  }
+
+  function showFact() {
+    $("factText").classList.remove("fact-visible");
+    window.setTimeout(() => {
+      $("factText").textContent = chessFacts[factIndex];
+      for (const [index, dot] of dots.querySelectorAll("span").entries()) {
+        dot.classList.toggle("active", index === factIndex);
+      }
+      $("factText").classList.add("fact-visible");
+      factIndex = (factIndex + 1) % chessFacts.length;
+    }, 160);
+  }
+
+  showFact();
+  window.setInterval(showFact, 5600);
+}
+
+function observeScrollReveals() {
+  const revealElements = document.querySelectorAll(".reveal-on-scroll");
+  if (!("IntersectionObserver" in window)) {
+    for (const element of revealElements) element.classList.add("in-view");
+    animateStats();
+    return;
+  }
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add("in-view");
+        if (entry.target.classList.contains("stats-panel")) animateStats();
+        observer.unobserve(entry.target);
+      }
+    },
+    { threshold: 0.2 },
+  );
+
+  for (const element of revealElements) observer.observe(element);
+}
+
 checkServer();
 showPanels();
 renderBoard();
 enhanceButtons();
+renderQuiz();
+startFactCarousel();
+observeScrollReveals();
 startPolling();
