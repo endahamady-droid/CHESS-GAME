@@ -8,7 +8,7 @@
   </head>
   <body>
     <main class="app">
-      <section class="panel hero">
+      <section class="panel hero" id="heroPanel">
         <p class="eyebrow">INFO7 Online Chess</p>
         <h1>Play chess with your friends</h1>
         <p class="muted">Create an account, share a room code, and play online. Moves are checked by your C++ chess logic on the server.</p>
@@ -60,7 +60,10 @@
               <p class="eyebrow">Room <span id="roomCode">------</span></p>
               <h2 id="turnText">Waiting...</h2>
             </div>
-            <button class="secondary" id="copyCodeBtn">Copy code</button>
+            <div class="game-actions">
+              <button class="secondary" id="leaveRoomBtn">Back to lobby</button>
+              <button class="secondary" id="copyCodeBtn">Copy code</button>
+            </div>
           </div>
           <div class="board-wrap">
             <div class="board" id="board" aria-label="Chess board"></div>

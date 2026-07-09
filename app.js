@@ -1,8 +1,10 @@
+const storage = window.sessionStorage;
+
 const state = {
-  token: localStorage.getItem("info7_token") || "",
-  player: JSON.parse(localStorage.getItem("info7_player") || "null"),
-  roomCode: localStorage.getItem("info7_room") || "",
-  color: localStorage.getItem("info7_color") || "",
+  token: storage.getItem("info7_token") || "",
+  player: JSON.parse(storage.getItem("info7_player") || "null"),
+  roomCode: storage.getItem("info7_room") || "",
+  color: storage.getItem("info7_color") || "",
   selected: null,
   room: null,
   chat: [],
@@ -10,18 +12,18 @@ const state = {
 };
 
 const pieces = {
-  K: "K",
-  Q: "Q",
-  R: "R",
-  B: "B",
-  N: "N",
-  P: "",
-  k: "K",
-  q: "Q",
-  r: "R",
-  b: "B",
-  n: "N",
-  p: "",
+  K: String.fromCodePoint(0x2654),
+  Q: String.fromCodePoint(0x2655),
+  R: String.fromCodePoint(0x2656),
+  B: String.fromCodePoint(0x2657),
+  N: String.fromCodePoint(0x2658),
+  P: String.fromCodePoint(0x2659),
+  k: String.fromCodePoint(0x265A),
+  q: String.fromCodePoint(0x265B),
+  r: String.fromCodePoint(0x265C),
+  b: String.fromCodePoint(0x265D),
+  n: String.fromCodePoint(0x265E),
+  p: String.fromCodePoint(0x265F),
 };
 
 const files = "abcdefgh";
@@ -53,24 +55,27 @@ async function api(path, options = {}) {
 }
 
 function saveSession() {
-  if (state.token) localStorage.setItem("info7_token", state.token);
-  else localStorage.removeItem("info7_token");
+  if (state.token) storage.setItem("info7_token", state.token);
+  else storage.removeItem("info7_token");
 
-  if (state.player) localStorage.setItem("info7_player", JSON.stringify(state.player));
-  else localStorage.removeItem("info7_player");
+  if (state.player) storage.setItem("info7_player", JSON.stringify(state.player));
+  else storage.removeItem("info7_player");
 
-  if (state.roomCode) localStorage.setItem("info7_room", state.roomCode);
-  else localStorage.removeItem("info7_room");
+  if (state.roomCode) storage.setItem("info7_room", state.roomCode);
+  else storage.removeItem("info7_room");
 
-  if (state.color) localStorage.setItem("info7_color", state.color);
-  else localStorage.removeItem("info7_color");
+  if (state.color) storage.setItem("info7_color", state.color);
+  else storage.removeItem("info7_color");
 }
 
 function showPanels() {
   const loggedIn = Boolean(state.token && state.player);
+  const inGame = Boolean(loggedIn && state.roomCode);
+  $("heroPanel").classList.toggle("hidden", inGame);
   $("authPanel").classList.toggle("hidden", loggedIn);
-  $("roomPanel").classList.toggle("hidden", !loggedIn);
-  $("gamePanel").classList.toggle("hidden", !loggedIn || !state.roomCode);
+  $("roomPanel").classList.toggle("hidden", !loggedIn || inGame);
+  $("gamePanel").classList.toggle("hidden", !inGame);
+  document.body.classList.toggle("game-view", inGame);
   if (loggedIn) $("playerName").textContent = state.player.username;
 }
 
@@ -95,10 +100,30 @@ function squareName(row, col) {
   return `${files[col]}${8 - row}`;
 }
 
+function pieceColor(piece) {
+  if (!piece) return "";
+  return piece === piece.toUpperCase() ? "white" : "black";
+}
+
+function currentBoard() {
+  return fenToBoard(state.room?.fen || "8/8/8/8/8/8/8/8");
+}
+
+function boardPieceAt(square) {
+  const file = files.indexOf(square[0]);
+  const rank = Number(square[1]);
+  if (file < 0 || rank < 1 || rank > 8) return "";
+  return currentBoard()[8 - rank]?.[file] || "";
+}
+
+function canMoveNow() {
+  return Boolean(state.room && state.room.status === "playing" && state.room.turn === state.color);
+}
+
 function renderBoard() {
   const boardElement = $("board");
   boardElement.innerHTML = "";
-  const board = fenToBoard(state.room?.fen || "8/8/8/8/8/8/8/8");
+  const board = currentBoard();
 
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
@@ -106,19 +131,23 @@ function renderBoard() {
       const name = squareName(row, col);
       square.className = `square ${(row + col) % 2 === 0 ? "light" : "dark"}`;
       if (state.selected === name) square.classList.add("selected");
+      if (!canMoveNow()) square.classList.add("locked");
+      if (row === 7) square.dataset.file = files[col];
+      if (col === 0) square.dataset.rank = String(8 - row);
 
       const piece = board[row][col];
       if (piece) {
         const pieceElement = document.createElement("span");
-        const colorClass = piece === piece.toUpperCase() ? "white-piece" : "black-piece";
+        const colorClass = pieceColor(piece) === "white" ? "white-piece" : "black-piece";
         const typeClass = `piece-${piece.toLowerCase()}`;
         pieceElement.className = `piece ${colorClass} ${typeClass}`;
         pieceElement.textContent = pieces[piece] || "";
         square.appendChild(pieceElement);
+        if (pieceColor(piece) === state.color) square.classList.add("own-piece");
       }
 
       square.title = name;
-      square.addEventListener("click", () => selectSquare(name));
+      square.addEventListener("click", (event) => selectSquare(name, event));
       boardElement.appendChild(square);
     }
   }
@@ -175,9 +204,41 @@ function startPolling() {
   }, 1500);
 }
 
-function selectSquare(name) {
-  if (!state.room || state.room.status !== "playing") return;
+function selectSquare(name, event) {
+  event?.currentTarget?.blur();
+  if (!state.room || state.room.status !== "playing") {
+    state.selected = null;
+    renderBoard();
+    message("Wait until your friend joins the room.", true);
+    return;
+  }
+
+  if (state.room.turn !== state.color) {
+    state.selected = null;
+    renderBoard();
+    message("Wait for your turn.", true);
+    return;
+  }
+
+  const clickedPiece = boardPieceAt(name);
   if (!state.selected) {
+    if (!clickedPiece) return;
+    if (pieceColor(clickedPiece) !== state.color) {
+      message("Choose one of your own pieces.", true);
+      return;
+    }
+    state.selected = name;
+    renderBoard();
+    return;
+  }
+
+  if (state.selected === name) {
+    state.selected = null;
+    renderBoard();
+    return;
+  }
+
+  if (clickedPiece && pieceColor(clickedPiece) === state.color) {
     state.selected = name;
     renderBoard();
     return;
@@ -200,6 +261,8 @@ async function sendMove(move) {
     message(`Move sent: ${move}`);
     await loadRoom();
   } catch (error) {
+    state.selected = null;
+    renderBoard();
     message(error.message, true);
   }
 }
@@ -283,7 +346,7 @@ $("loginBtn").addEventListener("click", async () => {
     state.player = data.player;
     saveSession();
     if (data.player.is_admin) {
-      localStorage.setItem("info7_admin_token", data.token);
+      storage.setItem("info7_admin_token", data.token);
       window.location.href = "/admin.html";
       return;
     }
@@ -301,10 +364,27 @@ $("logoutBtn").addEventListener("click", () => {
   state.roomCode = "";
   state.color = "";
   state.room = null;
+  state.chat = [];
+  state.selected = null;
+  if (state.poller) clearInterval(state.poller);
   saveSession();
   showPanels();
   renderBoard();
   message("Logged out.");
+});
+
+$("leaveRoomBtn").addEventListener("click", () => {
+  state.roomCode = "";
+  state.color = "";
+  state.room = null;
+  state.chat = [];
+  state.selected = null;
+  if (state.poller) clearInterval(state.poller);
+  saveSession();
+  showPanels();
+  renderBoard();
+  renderChat();
+  message("Back to lobby.");
 });
 
 $("createRoomBtn").addEventListener("click", async () => {

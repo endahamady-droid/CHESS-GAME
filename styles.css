@@ -32,6 +32,10 @@ body {
   padding: 24px 0;
 }
 
+.game-view .app {
+  width: min(1420px, calc(100% - 24px));
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -157,7 +161,8 @@ button.secondary:hover {
 
 .actions,
 .join-row,
-.topline {
+.topline,
+.game-actions {
   display: flex;
   gap: 10px;
   align-items: center;
@@ -197,6 +202,7 @@ button.secondary:hover {
 .square {
   display: grid;
   place-items: center;
+  position: relative;
   border: 0;
   border-radius: 0;
   padding: 0;
@@ -223,6 +229,42 @@ button.secondary:hover {
   outline-offset: -4px;
 }
 
+.square.locked {
+  cursor: default;
+}
+
+.square[data-rank]::before,
+.square[data-file]::after {
+  position: absolute;
+  z-index: 2;
+  font-size: clamp(0.58rem, 1.2vw, 0.78rem);
+  font-weight: 900;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.square[data-rank]::before {
+  content: attr(data-rank);
+  top: 5px;
+  left: 6px;
+}
+
+.square[data-file]::after {
+  content: attr(data-file);
+  right: 6px;
+  bottom: 5px;
+}
+
+.light[data-rank]::before,
+.light[data-file]::after {
+  color: rgba(75, 46, 22, 0.72);
+}
+
+.dark[data-rank]::before,
+.dark[data-file]::after {
+  color: rgba(255, 255, 255, 0.78);
+}
+
 .light {
   background: var(--light-square);
 }
@@ -236,67 +278,42 @@ button.secondary:hover {
 }
 
 .piece {
-  display: grid;
-  place-items: center;
+  display: block;
   position: relative;
-  width: 68%;
-  height: 68%;
-  border-radius: 999px;
-  font-weight: 900;
+  z-index: 1;
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Arial Unicode MS", serif;
+  font-size: clamp(2rem, 5.4vw, 4.35rem);
+  font-weight: 400;
   letter-spacing: 0;
+  line-height: 0.92;
   pointer-events: none;
-  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.35);
+  text-rendering: geometricPrecision;
 }
 
 .black-piece {
-  color: #f8fafc;
-  background: #111827;
-  border: 2px solid #020617;
+  color: #111827;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.28),
+    0 8px 14px rgba(15, 23, 42, 0.32);
 }
 
 .white-piece {
-  color: #111827;
-  background: #fff7ed;
-  border: 2px solid #111827;
+  color: #fffaf0;
+  text-shadow:
+    1px 0 0 #111827,
+    -1px 0 0 #111827,
+    0 1px 0 #111827,
+    0 -1px 0 #111827,
+    0 8px 14px rgba(15, 23, 42, 0.26);
 }
 
-.piece-p {
-  width: 52%;
-  height: 52%;
-}
-
-.piece-r {
-  border-radius: 8px;
-}
-
-.piece-n {
-  border-radius: 45% 55% 45% 55%;
-  transform: rotate(-10deg);
-}
-
-.piece-b {
-  border-radius: 999px 999px 45% 45%;
-}
-
-.piece-q::before,
-.piece-k::before {
-  content: "";
-  position: absolute;
-  width: 58%;
-  height: 13%;
-  border-radius: 999px;
-  top: -16%;
-  background: currentColor;
-}
-
-.piece-k::after {
-  content: "";
-  position: absolute;
-  width: 13%;
-  height: 56%;
-  border-radius: 999px;
-  top: -32%;
-  background: currentColor;
+.own-piece:not(.locked) .piece {
+  filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.35));
 }
 
 .side-panel {

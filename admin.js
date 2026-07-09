@@ -1,5 +1,7 @@
+const storage = window.sessionStorage;
+
 const state = {
-  token: localStorage.getItem("info7_admin_token") || "",
+  token: storage.getItem("info7_admin_token") || "",
 };
 
 function $(id) {
@@ -45,7 +47,7 @@ async function login() {
       return;
     }
     state.token = data.token;
-    localStorage.setItem("info7_admin_token", state.token);
+    storage.setItem("info7_admin_token", state.token);
     showAdmin(true);
     await loadDashboard();
   } catch (error) {
