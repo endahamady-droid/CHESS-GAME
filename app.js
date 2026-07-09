@@ -70,6 +70,13 @@ const quizState = {
   score: 0,
 };
 
+const levelQuizState = {
+  level: 1,
+  index: 0,
+  score: 0,
+  questions: [],
+};
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -90,7 +97,7 @@ async function api(path, options = {}) {
     headers.Authorization = `Bearer ${state.token}`;
   }
 
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(path, { ...options, headers, credentials: "include" });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || "request_failed");
@@ -118,11 +125,13 @@ function showPanels() {
   $("heroPanel").classList.toggle("hidden", inGame);
   $("authPanel").classList.toggle("hidden", loggedIn);
   $("roomPanel").classList.toggle("hidden", !loggedIn || inGame);
+  $("profilePanel").classList.toggle("hidden", !loggedIn || inGame);
   $("gamePanel").classList.toggle("hidden", !inGame);
   $("lobbyExtras").classList.toggle("hidden", inGame);
   document.body.classList.toggle("game-view", inGame);
   document.body.dataset.playerColor = state.color || "";
   if (loggedIn) $("playerName").textContent = state.player.username;
+  if (loggedIn) updateProfileUI();
 }
 
 function fenToBoard(fen) {
@@ -452,13 +461,58 @@ async function checkServer() {
   }
 }
 
+async function loadProfile() {
+  if (!state.token) return;
+  try {
+    const data = await api("/api/profile", { method: "GET" });
+    state.player = data.player;
+    saveSession();
+    updateProfileUI();
+    await loadHistory();
+  } catch {
+  }
+}
+
+async function loadHistory() {
+  const list = $("historyList");
+  if (!list || !state.token) return;
+  try {
+    const data = await api("/api/me/history", { method: "GET" });
+    list.innerHTML = "";
+    for (const game of data.history || []) {
+      const item = document.createElement("li");
+      const delta = Number(game.elo_delta);
+      item.className = delta >= 0 ? "elo-up" : "elo-down";
+      item.textContent = `${game.result} vs ${game.opponent_username || "unknown"} | ${delta >= 0 ? "+" : ""}${delta} ELO`;
+      list.appendChild(item);
+    }
+    if (!list.children.length) {
+      const item = document.createElement("li");
+      item.textContent = "No finished games yet.";
+      list.appendChild(item);
+    }
+  } catch {
+  }
+}
+
+function updateProfileUI() {
+  if (!state.player) return;
+  $("profileLine").textContent = `ELO: ${state.player.elo || 1200} | Games: ${state.player.games_played || 0}`;
+  $("profileElo").textContent = `ELO ${state.player.elo || 1200}`;
+  $("profileRecord").textContent = `${state.player.wins || 0}W / ${state.player.losses || 0}L / ${state.player.draws || 0}D`;
+  $("profileQuiz").textContent = `Quiz level ${state.player.quiz_level_reached || 1}`;
+  $("profileGames").textContent = `${state.player.games_played || 0} games`;
+}
+
 $("registerBtn").addEventListener("click", async () => {
   try {
     await api("/api/register", {
       method: "POST",
       body: JSON.stringify({
         username: $("username").value,
+        email: $("email").value,
         password: $("password").value,
+        elo: Number($("eloInput").value),
       }),
     });
     message("Account created. Now login.");
@@ -485,7 +539,9 @@ $("loginBtn").addEventListener("click", async () => {
       return;
     }
     showPanels();
+    await loadProfile();
     message("Logged in.");
+    maybeOpenLevelQuiz();
     startPolling();
   } catch (error) {
     message(error.message, true);
@@ -581,12 +637,33 @@ for (const input of [$("username"), $("password")]) {
   });
 }
 
+$("eloInput").addEventListener("input", () => {
+  $("eloValue").textContent = $("eloInput").value;
+});
+
 $("joinCode").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     $("joinRoomBtn").click();
   }
 });
+
+for (const button of document.querySelectorAll(".social-btn")) {
+  button.addEventListener("click", async () => {
+    const provider = button.dataset.provider;
+    try {
+      const response = await fetch(`/api/auth/${provider}/start`, { method: "GET", credentials: "include" });
+      const data = await response.json();
+      if (data.redirect_url) {
+        window.location.href = data.redirect_url;
+        return;
+      }
+      message(data.error || `${provider} login is not configured yet.`, true);
+    } catch (error) {
+      message(error.message, true);
+    }
+  });
+}
 
 function enhanceButtons() {
   for (const element of document.querySelectorAll("button:not(.square), .button-link")) {
@@ -656,6 +733,91 @@ $("quizReplayBtn").addEventListener("click", () => {
   quizState.score = 0;
   renderQuiz();
 });
+
+function buildLevelQuestions(level) {
+  const pool = [
+    ...quizQuestions,
+    { question: "What does O-O mean in algebraic notation?", options: ["Long castle", "Short castle", "Checkmate", "Capture"], answer: 1 },
+    { question: "What is a fork?", options: ["A draw rule", "Attacking two pieces at once", "A pawn move", "A king escape"], answer: 1 },
+    { question: "Which endgame is usually a forced mate?", options: ["King vs king", "King and queen vs king", "King and bishop vs king", "King and knight vs king"], answer: 1 },
+    { question: "What is en passant?", options: ["A special pawn capture", "A rook move", "A queen trade", "A checkmate pattern"], answer: 0 },
+    { question: "What symbol often means check in notation?", options: ["+", "#", "x", "="], answer: 0 },
+    { question: "What is opposition in king endgames?", options: ["A tactic with queens", "Kings facing with one square between", "A castle move", "A time control"], answer: 1 },
+    { question: "What does promotion usually choose?", options: ["King", "Queen", "Pawn", "No piece"], answer: 1 },
+    { question: "What is a pin?", options: ["A piece cannot move safely because it exposes a stronger piece", "A draw", "A pawn race", "A castle"], answer: 0 },
+  ];
+  const count = Math.min(40, level * 5);
+  const questions = [];
+  for (let i = 0; i < count; i++) questions.push(pool[(i + level - 1) % pool.length]);
+  return questions;
+}
+
+function maybeOpenLevelQuiz() {
+  if (!state.player) return;
+  const level = Number(state.player.quiz_level_reached || 1);
+  if (level > 8) return;
+  levelQuizState.level = level;
+  levelQuizState.index = 0;
+  levelQuizState.score = 0;
+  levelQuizState.questions = buildLevelQuestions(level);
+  $("quizModal").classList.remove("hidden");
+  renderLevelQuiz();
+}
+
+function renderLevelQuiz() {
+  const total = levelQuizState.questions.length;
+  const question = levelQuizState.questions[levelQuizState.index];
+  $("levelQuizTitle").textContent = `Level ${levelQuizState.level} Quiz`;
+  $("levelProgressText").textContent = `Question ${levelQuizState.index + 1} / ${total}`;
+  $("levelProgressBar").style.width = `${Math.round((levelQuizState.index / total) * 100)}%`;
+  $("levelQuizQuestion").textContent = question.question;
+  $("levelQuizFeedback").textContent = "";
+  const options = $("levelQuizOptions");
+  options.innerHTML = "";
+  for (const [index, option] of question.options.entries()) {
+    const button = document.createElement("button");
+    button.className = "quiz-option secondary";
+    button.textContent = option;
+    button.addEventListener("click", () => answerLevelQuiz(index));
+    options.appendChild(button);
+  }
+}
+
+async function answerLevelQuiz(answerIndex) {
+  const question = levelQuizState.questions[levelQuizState.index];
+  const isCorrect = answerIndex === question.answer;
+  if (isCorrect) levelQuizState.score++;
+  for (const [index, button] of $("levelQuizOptions").querySelectorAll("button").entries()) {
+    button.disabled = true;
+    button.classList.toggle("correct", index === question.answer);
+    button.classList.toggle("wrong", index === answerIndex && !isCorrect);
+  }
+  window.setTimeout(async () => {
+    levelQuizState.index++;
+    if (levelQuizState.index < levelQuizState.questions.length) {
+      renderLevelQuiz();
+      return;
+    }
+    const score = Math.round((levelQuizState.score / levelQuizState.questions.length) * 100);
+    const passed = score >= 70;
+    $("levelProgressBar").style.width = "100%";
+    $("levelQuizQuestion").textContent = `${score}% score`;
+    $("levelQuizOptions").innerHTML = "";
+    $("levelQuizFeedback").textContent = passed ? "Level passed. Trophy unlocked." : "Try again later to unlock the next level.";
+    try {
+      const data = await api("/api/quiz/progress", {
+        method: "POST",
+        body: JSON.stringify({ level: levelQuizState.level, score, passed }),
+      });
+      state.player = data.player;
+      saveSession();
+      updateProfileUI();
+    } catch {
+    }
+  }, 650);
+}
+
+$("skipQuizBtn").addEventListener("click", () => $("quizModal").classList.add("hidden"));
 
 function animateStats() {
   for (const element of document.querySelectorAll(".stat-number")) {

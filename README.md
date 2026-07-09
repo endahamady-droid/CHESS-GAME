@@ -5,8 +5,9 @@ This server keeps your existing C++ chess logic separate and unchanged.
 It uses:
 
 - `server.py` for accounts, rooms, moves, and SQLite database storage.
+- PostgreSQL automatically when `DATABASE_URL` is configured on Render.
 - `engine.cpp` as a small C++ adapter around your existing `board.cpp`, `game.cpp`, and `mask.cpp`.
-- `chess_online.db` as the local database file created automatically.
+- `chess_online.db` as the local fallback database file created automatically.
 
 ## Build the C++ rule engine
 
@@ -58,6 +59,12 @@ http://localhost:8080/admin.html
 You can also login with this account on the normal site. Admin users are redirected to the admin page automatically.
 
 The admin dashboard shows the database path, database size, players count, rooms count, and moves count.
+
+## Persistent production database
+
+For Render, create a PostgreSQL database and set `DATABASE_URL` on the Web Service. The server runs migrations automatically and stores users, ELO, quiz progress, sessions, chat, rooms, moves, and game history there.
+
+See `SECURITY_DEPLOY.md` for Render variables, OAuth variables, and Cloudflare/security setup.
 
 For a real online deployment, change the admin credentials with environment variables:
 

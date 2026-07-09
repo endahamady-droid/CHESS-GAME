@@ -10,32 +10,94 @@ import secrets
 import sqlite3
 import subprocess
 import time
+from http import cookies
+from urllib.parse import parse_qs
+
+try:
+    import bcrypt
+except ImportError:
+    bcrypt = None
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:
+    psycopg = None
+    dict_row = None
 
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(ROOT, "chess_online.db"))
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+USE_POSTGRES = bool(DATABASE_URL)
 ENGINE_PATH = os.path.join(ROOT, "engine.exe" if os.name == "nt" else "engine")
 PUBLIC_PATH = os.path.join(ROOT, "public")
 HOST = "0.0.0.0"
 PORT = int(os.environ.get("PORT", "8080"))
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "babba")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "130577")
+SESSION_TTL_SECONDS = int(os.environ.get("SESSION_TTL_SECONDS", str(60 * 60 * 12)))
+RATE_LIMIT_WINDOW = 60
+RATE_LIMITS = {
+    "global": (240, RATE_LIMIT_WINDOW),
+    "login": (5, 15 * 60),
+    "register": (10, RATE_LIMIT_WINDOW),
+    "rooms": (20, RATE_LIMIT_WINDOW),
+    "chat": (30, RATE_LIMIT_WINDOW),
+    "moves": (60, RATE_LIMIT_WINDOW),
+}
+RATE_BUCKETS = {}
+
+
+class Database:
+    def __init__(self, connection, is_postgres=False):
+        self.connection = connection
+        self.is_postgres = is_postgres
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, traceback):
+        if exc_type is None:
+            self.connection.commit()
+        else:
+            self.connection.rollback()
+        self.connection.close()
+
+    def _sql(self, sql):
+        return sql.replace("?", "%s") if self.is_postgres else sql
+
+    def execute(self, sql, params=()):
+        return self.connection.execute(self._sql(sql), params)
+
+    def executescript(self, script):
+        if not self.is_postgres:
+            return self.connection.executescript(script)
+        for statement in [part.strip() for part in script.split(";") if part.strip()]:
+            self.execute(statement)
 
 
 def connect_db():
+    if USE_POSTGRES:
+        if psycopg is None:
+            raise RuntimeError("psycopg_missing_install_requirements")
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        return Database(conn, True)
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    return Database(conn, False)
 
 
 def init_db():
     with connect_db() as db:
+        id_type = "SERIAL PRIMARY KEY" if USE_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMENT"
         db.executescript(
-            """
+            f"""
             CREATE TABLE IF NOT EXISTS players (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE,
                 password_salt TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 is_admin INTEGER NOT NULL DEFAULT 0,
@@ -43,6 +105,12 @@ def init_db():
                 wins INTEGER NOT NULL DEFAULT 0,
                 losses INTEGER NOT NULL DEFAULT 0,
                 draws INTEGER NOT NULL DEFAULT 0,
+                elo INTEGER NOT NULL DEFAULT 1200,
+                provider TEXT NOT NULL DEFAULT 'local',
+                provider_id TEXT,
+                quiz_level_reached INTEGER NOT NULL DEFAULT 1,
+                quiz_score INTEGER NOT NULL DEFAULT 0,
+                games_played INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             );
 
@@ -53,7 +121,7 @@ def init_db():
             );
 
             CREATE TABLE IF NOT EXISTS rooms (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 code TEXT UNIQUE NOT NULL,
                 white_player_id INTEGER NOT NULL REFERENCES players(id),
                 black_player_id INTEGER REFERENCES players(id),
@@ -66,7 +134,7 @@ def init_db():
             );
 
             CREATE TABLE IF NOT EXISTS moves (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
                 player_id INTEGER NOT NULL REFERENCES players(id),
                 move_text TEXT NOT NULL,
@@ -75,21 +143,59 @@ def init_db():
             );
 
             CREATE TABLE IF NOT EXISTS chat_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
                 player_id INTEGER NOT NULL REFERENCES players(id),
                 message TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS game_history (
+                id {id_type},
+                room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+                player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+                opponent_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+                result TEXT NOT NULL,
+                elo_before INTEGER NOT NULL,
+                elo_after INTEGER NOT NULL,
+                elo_delta INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS login_attempts (
+                id {id_type},
+                ip TEXT NOT NULL,
+                username TEXT,
+                success INTEGER NOT NULL DEFAULT 0,
                 created_at INTEGER NOT NULL
             );
             """
         )
         ensure_column(db, "players", "is_admin", "INTEGER NOT NULL DEFAULT 0")
         ensure_column(db, "players", "is_disabled", "INTEGER NOT NULL DEFAULT 0")
+        ensure_column(db, "players", "email", "TEXT")
+        ensure_column(db, "players", "elo", "INTEGER NOT NULL DEFAULT 1200")
+        ensure_column(db, "players", "provider", "TEXT NOT NULL DEFAULT 'local'")
+        ensure_column(db, "players", "provider_id", "TEXT")
+        ensure_column(db, "players", "quiz_level_reached", "INTEGER NOT NULL DEFAULT 1")
+        ensure_column(db, "players", "quiz_score", "INTEGER NOT NULL DEFAULT 0")
+        ensure_column(db, "players", "games_played", "INTEGER NOT NULL DEFAULT 0")
         ensure_admin(db)
 
 
 def ensure_column(db, table, column, definition):
-    columns = [row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()]
+    if db.is_postgres:
+        rows = db.execute(
+            """
+            SELECT column_name AS name
+            FROM information_schema.columns
+            WHERE table_name = ?
+            """,
+            (table,),
+        ).fetchall()
+    else:
+        rows = db.execute(f"PRAGMA table_info({table})").fetchall()
+    columns = [row["name"] for row in rows]
     if column not in columns:
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
@@ -117,6 +223,9 @@ def ensure_admin(db):
 
 
 def hash_password(password, salt=None):
+    if bcrypt is not None:
+        hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12))
+        return ("bcrypt", hashed.decode("utf-8"))
     if salt is None:
         salt = secrets.token_bytes(16)
     elif isinstance(salt, str):
@@ -129,8 +238,161 @@ def hash_password(password, salt=None):
 
 
 def verify_password(password, salt, expected_hash):
+    if salt == "bcrypt" and bcrypt is not None:
+        return bcrypt.checkpw(password.encode("utf-8"), expected_hash.encode("utf-8"))
     _, actual_hash = hash_password(password, salt)
     return hmac.compare_digest(actual_hash, expected_hash)
+
+
+def client_ip(handler):
+    forwarded = handler.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return handler.client_address[0]
+
+
+def clean_rate_buckets(now):
+    for key in list(RATE_BUCKETS.keys()):
+        RATE_BUCKETS[key] = [stamp for stamp in RATE_BUCKETS[key] if now - stamp < 15 * 60]
+        if not RATE_BUCKETS[key]:
+            del RATE_BUCKETS[key]
+
+
+def rate_limited(handler, bucket_name, identifier=None):
+    now = int(time.time())
+    clean_rate_buckets(now)
+    limit, window = RATE_LIMITS[bucket_name]
+    key = f"{bucket_name}:{identifier or client_ip(handler)}"
+    attempts = [stamp for stamp in RATE_BUCKETS.get(key, []) if now - stamp < window]
+    if len(attempts) >= limit:
+        json_response(handler, 429, {"error": "rate_limited"})
+        return True
+    attempts.append(now)
+    RATE_BUCKETS[key] = attempts
+    return False
+
+
+def record_login_attempt(ip, username, success):
+    with connect_db() as db:
+        db.execute(
+            "INSERT INTO login_attempts (ip, username, success, created_at) VALUES (?, ?, ?, ?)",
+            (ip, username[:80] if username else None, 1 if success else 0, int(time.time())),
+        )
+
+
+def sanitize_text(value, max_length):
+    text = str(value or "").strip()
+    text = "".join(ch for ch in text if ch == "\n" or ch == "\t" or ord(ch) >= 32)
+    return text[:max_length]
+
+
+def sanitize_username(value):
+    username = str(value or "").strip()
+    allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+    return "".join(ch for ch in username if ch in allowed)[:24]
+
+
+def create_session(db, player_id):
+    token = secrets.token_urlsafe(32)
+    db.execute(
+        "INSERT INTO sessions (token, player_id, created_at) VALUES (?, ?, ?)",
+        (token, player_id, int(time.time())),
+    )
+    return token
+
+
+def get_cookie_token(handler):
+    raw_cookie = handler.headers.get("Cookie", "")
+    if not raw_cookie:
+        return ""
+    parsed = cookies.SimpleCookie(raw_cookie)
+    morsel = parsed.get("info7_session")
+    return morsel.value if morsel else ""
+
+
+def set_session_cookie(handler, token):
+    handler.send_header(
+        "Set-Cookie",
+        f"info7_session={token}; Max-Age={SESSION_TTL_SECONDS}; Path=/; HttpOnly; SameSite=Lax; Secure",
+    )
+
+
+def clear_session_cookie(handler):
+    handler.send_header("Set-Cookie", "info7_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax; Secure")
+
+
+def elo_k_factor(elo, games_played):
+    if games_played < 30 or elo < 1200:
+        return 40
+    if elo > 2400:
+        return 10
+    return 20
+
+
+def expected_score(player_elo, opponent_elo):
+    return 1 / (1 + 10 ** ((opponent_elo - player_elo) / 400))
+
+
+def calculate_elo(player, opponent, score):
+    before = int(player["elo"])
+    opponent_elo = int(opponent["elo"])
+    k = elo_k_factor(before, int(player["games_played"]))
+    after = round(before + k * (score - expected_score(before, opponent_elo)))
+    return max(100, after)
+
+
+def finish_game(db, room, winner_id=None, is_draw=False):
+    white = db.execute("SELECT * FROM players WHERE id = ?", (room["white_player_id"],)).fetchone()
+    black = db.execute("SELECT * FROM players WHERE id = ?", (room["black_player_id"],)).fetchone()
+    if not white or not black:
+        return []
+
+    if is_draw:
+        white_score, black_score = 0.5, 0.5
+        white_result, black_result = "draw", "draw"
+    elif winner_id == white["id"]:
+        white_score, black_score = 1, 0
+        white_result, black_result = "win", "loss"
+    else:
+        white_score, black_score = 0, 1
+        white_result, black_result = "loss", "win"
+
+    white_after = calculate_elo(white, black, white_score)
+    black_after = calculate_elo(black, white, black_score)
+    now = int(time.time())
+    rows = [
+        (white, black, white_result, white_after),
+        (black, white, black_result, black_after),
+    ]
+
+    for player, opponent, result, after in rows:
+        before = int(player["elo"])
+        delta = after - before
+        db.execute(
+            """
+            INSERT INTO game_history (room_id, player_id, opponent_id, result, elo_before, elo_after, elo_delta, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (room["id"], player["id"], opponent["id"], result, before, after, delta, now),
+        )
+        db.execute(
+            "UPDATE players SET elo = ?, games_played = games_played + 1 WHERE id = ?",
+            (after, player["id"]),
+        )
+
+    if is_draw:
+        db.execute("UPDATE players SET draws = draws + 1 WHERE id IN (?, ?)", (white["id"], black["id"]))
+    elif winner_id == white["id"]:
+        db.execute("UPDATE players SET wins = wins + 1 WHERE id = ?", (white["id"],))
+        db.execute("UPDATE players SET losses = losses + 1 WHERE id = ?", (black["id"],))
+    else:
+        db.execute("UPDATE players SET wins = wins + 1 WHERE id = ?", (black["id"],))
+        db.execute("UPDATE players SET losses = losses + 1 WHERE id = ?", (white["id"],))
+
+    return [
+        {"player_id": white["id"], "elo_before": white["elo"], "elo_after": white_after, "elo_delta": white_after - white["elo"]},
+        {"player_id": black["id"], "elo_before": black["elo"], "elo_after": black_after, "elo_delta": black_after - black["elo"]},
+    ]
 
 
 def new_room_code():
@@ -157,13 +419,32 @@ def starting_fen():
     return run_engine("start")
 
 
-def json_response(handler, status, data):
+def send_security_headers(handler):
+    handler.send_header("X-Content-Type-Options", "nosniff")
+    handler.send_header("X-Frame-Options", "DENY")
+    handler.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+    handler.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    handler.send_header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    handler.send_header(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
+    )
+
+
+def json_response(handler, status, data, cookie_token=None, clear_cookie=False):
     body = json.dumps(data).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
-    handler.send_header("Access-Control-Allow-Origin", "*")
+    send_security_headers(handler)
+    handler.send_header("Access-Control-Allow-Origin", handler.headers.get("Origin", "*"))
     handler.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
     handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Credentials", "true")
+    if cookie_token:
+        set_session_cookie(handler, cookie_token)
+    if clear_cookie:
+        clear_session_cookie(handler)
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -180,6 +461,7 @@ def file_response(handler, path):
 
     handler.send_response(200)
     handler.send_header("Content-Type", content_type)
+    send_security_headers(handler)
     handler.send_header("Content-Length", str(len(body)))
     handler.end_headers()
     handler.wfile.write(body)
@@ -194,18 +476,22 @@ def read_json(handler):
 
 def auth_player(handler):
     header = handler.headers.get("Authorization", "")
-    if not header.startswith("Bearer "):
+    token = ""
+    if header.startswith("Bearer "):
+        token = header.removeprefix("Bearer ").strip()
+    if not token:
+        token = get_cookie_token(handler)
+    if not token:
         return None
-    token = header.removeprefix("Bearer ").strip()
     with connect_db() as db:
         return db.execute(
             """
             SELECT players.*
             FROM sessions
             JOIN players ON players.id = sessions.player_id
-            WHERE sessions.token = ?
+            WHERE sessions.token = ? AND sessions.created_at >= ? AND players.is_disabled = 0
             """,
-            (token,),
+            (token, int(time.time()) - SESSION_TTL_SECONDS),
         ).fetchone()
 
 
@@ -218,6 +504,12 @@ def public_player(row):
         "wins": row["wins"],
         "losses": row["losses"],
         "draws": row["draws"],
+        "email": row["email"] if "email" in row.keys() else None,
+        "elo": row["elo"],
+        "provider": row["provider"],
+        "quiz_level_reached": row["quiz_level_reached"],
+        "quiz_score": row["quiz_score"],
+        "games_played": row["games_played"],
     }
 
 
@@ -279,6 +571,63 @@ class ChessHandler(BaseHTTPRequestHandler):
             json_response(self, 200, {"ok": True})
             return
 
+        if path == ["api", "profile"]:
+            player = auth_player(self)
+            if player is None:
+                json_response(self, 401, {"error": "login_required"})
+                return
+            json_response(self, 200, {"player": public_player(player)})
+            return
+
+        if path == ["api", "me", "history"]:
+            player = auth_player(self)
+            if player is None:
+                json_response(self, 401, {"error": "login_required"})
+                return
+            with connect_db() as db:
+                history = db.execute(
+                    """
+                    SELECT game_history.*, opponents.username AS opponent_username
+                    FROM game_history
+                    LEFT JOIN players opponents ON opponents.id = game_history.opponent_id
+                    WHERE game_history.player_id = ?
+                    ORDER BY game_history.created_at DESC
+                    LIMIT 50
+                    """,
+                    (player["id"],),
+                ).fetchall()
+            json_response(self, 200, {"history": [dict(item) for item in history]})
+            return
+
+        if path == ["api", "auth", "providers"]:
+            json_response(
+                self,
+                200,
+                {
+                    "google": bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET")),
+                    "apple": bool(os.environ.get("APPLE_CLIENT_ID") and os.environ.get("APPLE_CLIENT_SECRET")),
+                    "facebook": bool(os.environ.get("FACEBOOK_CLIENT_ID") and os.environ.get("FACEBOOK_CLIENT_SECRET")),
+                },
+            )
+            return
+
+        if len(path) == 4 and path[:2] == ["api", "auth"] and path[3] == "start":
+            provider = path[2]
+            client_id = os.environ.get(f"{provider.upper()}_CLIENT_ID", "")
+            if provider not in ("google", "apple", "facebook") or not client_id:
+                json_response(self, 501, {"error": "oauth_provider_not_configured"})
+                return
+            json_response(
+                self,
+                501,
+                {
+                    "error": "oauth_callback_not_configured",
+                    "provider": provider,
+                    "message": "Create the OAuth app, set provider secrets on Render, then wire the callback URL.",
+                },
+            )
+            return
+
         if len(path) == 3 and path[:2] == ["api", "rooms"]:
             code = path[2].upper()
             with connect_db() as db:
@@ -338,7 +687,8 @@ class ChessHandler(BaseHTTPRequestHandler):
             with connect_db() as db:
                 players = db.execute(
                     """
-                    SELECT id, username, is_admin, is_disabled, wins, losses, draws, created_at
+                    SELECT id, username, email, is_admin, is_disabled, wins, losses, draws,
+                           elo, provider, quiz_level_reached, quiz_score, games_played, created_at
                     FROM players
                     ORDER BY created_at DESC
                     """
@@ -393,8 +743,15 @@ class ChessHandler(BaseHTTPRequestHandler):
         data = read_json(self)
 
         if path == ["api", "register"]:
-            username = str(data.get("username", "")).strip()
+            if rate_limited(self, "register"):
+                return
+            username = sanitize_username(data.get("username", ""))
+            email = sanitize_text(data.get("email", ""), 160).lower() or None
             password = str(data.get("password", ""))
+            try:
+                elo = max(400, min(2800, int(data.get("elo", 1200))))
+            except (TypeError, ValueError):
+                elo = 1200
             if len(username) < 3 or len(password) < 4:
                 json_response(self, 400, {"error": "username_or_password_too_short"})
                 return
@@ -403,34 +760,48 @@ class ChessHandler(BaseHTTPRequestHandler):
                 with connect_db() as db:
                     db.execute(
                         """
-                        INSERT INTO players (username, password_salt, password_hash, created_at)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO players (username, email, password_salt, password_hash, elo, provider, created_at)
+                        VALUES (?, ?, ?, ?, ?, 'local', ?)
                         """,
-                        (username, salt, password_hash, int(time.time())),
+                        (username, email, salt, password_hash, elo, int(time.time())),
                     )
-            except sqlite3.IntegrityError:
-                json_response(self, 409, {"error": "username_already_exists"})
+            except Exception:
+                json_response(self, 409, {"error": "username_or_email_already_exists"})
                 return
             json_response(self, 201, {"ok": True})
             return
 
         if path == ["api", "login"]:
-            username = str(data.get("username", "")).strip()
+            ip = client_ip(self)
+            username = sanitize_text(data.get("username", ""), 160)
+            if rate_limited(self, "login", f"{ip}:{username.lower()}"):
+                return
             password = str(data.get("password", ""))
             with connect_db() as db:
-                player = db.execute("SELECT * FROM players WHERE username = ?", (username,)).fetchone()
+                player = db.execute(
+                    "SELECT * FROM players WHERE username = ? OR email = ?",
+                    (username, username.lower()),
+                ).fetchone()
                 if player is None or not verify_password(password, player["password_salt"], player["password_hash"]):
+                    record_login_attempt(ip, username, False)
                     json_response(self, 401, {"error": "bad_login"})
                     return
                 if player["is_disabled"] == 1:
+                    record_login_attempt(ip, username, False)
                     json_response(self, 403, {"error": "account_disabled"})
                     return
-                token = secrets.token_urlsafe(32)
-                db.execute(
-                    "INSERT INTO sessions (token, player_id, created_at) VALUES (?, ?, ?)",
-                    (token, player["id"], int(time.time())),
-                )
-            json_response(self, 200, {"token": token, "player": public_player(player)})
+                token = create_session(db, player["id"])
+            record_login_attempt(ip, username, True)
+            json_response(self, 200, {"token": token, "player": public_player(player)}, cookie_token=token)
+            return
+
+        if path == ["api", "logout"]:
+            header = self.headers.get("Authorization", "")
+            token = header.removeprefix("Bearer ").strip() if header.startswith("Bearer ") else get_cookie_token(self)
+            if token:
+                with connect_db() as db:
+                    db.execute("DELETE FROM sessions WHERE token = ?", (token,))
+            json_response(self, 200, {"ok": True}, clear_cookie=True)
             return
 
         player = auth_player(self)
@@ -438,7 +809,31 @@ class ChessHandler(BaseHTTPRequestHandler):
             json_response(self, 401, {"error": "login_required"})
             return
 
+        if path == ["api", "quiz", "progress"]:
+            try:
+                level = max(1, min(8, int(data.get("level", player["quiz_level_reached"]))))
+                score = max(0, int(data.get("score", player["quiz_score"])))
+                passed = bool(data.get("passed", False))
+            except (TypeError, ValueError):
+                json_response(self, 400, {"error": "bad_quiz_payload"})
+                return
+            next_level = max(player["quiz_level_reached"], level + 1 if passed else level)
+            with connect_db() as db:
+                db.execute(
+                    """
+                    UPDATE players
+                    SET quiz_level_reached = ?, quiz_score = CASE WHEN quiz_score > ? THEN quiz_score ELSE ? END
+                    WHERE id = ?
+                    """,
+                    (next_level, score, score, player["id"]),
+                )
+                updated = db.execute("SELECT * FROM players WHERE id = ?", (player["id"],)).fetchone()
+            json_response(self, 200, {"player": public_player(updated)})
+            return
+
         if path == ["api", "rooms"]:
+            if rate_limited(self, "rooms"):
+                return
             code = new_room_code()
             with connect_db() as db:
                 while db.execute("SELECT 1 FROM rooms WHERE code = ?", (code,)).fetchone():
@@ -518,8 +913,10 @@ class ChessHandler(BaseHTTPRequestHandler):
             return
 
         if len(path) == 4 and path[:2] == ["api", "rooms"] and path[3] == "chat":
+            if rate_limited(self, "chat"):
+                return
             code = path[2].upper()
-            message = str(data.get("message", "")).strip()
+            message = sanitize_text(data.get("message", ""), 400)
             if not message:
                 json_response(self, 400, {"error": "empty_message"})
                 return
@@ -543,6 +940,8 @@ class ChessHandler(BaseHTTPRequestHandler):
             return
 
         if len(path) == 4 and path[:2] == ["api", "rooms"] and path[3] == "moves":
+            if rate_limited(self, "moves"):
+                return
             code = path[2].upper()
             move_text = str(data.get("move", "")).strip().lower()
             with connect_db() as db:
@@ -567,8 +966,10 @@ class ChessHandler(BaseHTTPRequestHandler):
                 new_fen, new_turn = parts[1], parts[2]
                 check_state = parts[3] if len(parts) > 3 else "safe"
                 game_state = parts[4] if len(parts) > 4 else "playing"
-                status = "finished" if game_state == "checkmate" else "playing"
+                is_draw = game_state in ("draw", "stalemate")
+                status = "finished" if game_state in ("checkmate", "draw", "stalemate") else "playing"
                 winner_id = player["id"] if game_state == "checkmate" else None
+                elo_changes = []
 
                 db.execute(
                     """
@@ -585,10 +986,8 @@ class ChessHandler(BaseHTTPRequestHandler):
                     """,
                     (room["id"], player["id"], move_text, new_fen, int(time.time())),
                 )
-                if game_state == "checkmate":
-                    loser_id = room["black_player_id"] if player["id"] == room["white_player_id"] else room["white_player_id"]
-                    db.execute("UPDATE players SET wins = wins + 1 WHERE id = ?", (player["id"],))
-                    db.execute("UPDATE players SET losses = losses + 1 WHERE id = ?", (loser_id,))
+                if status == "finished":
+                    elo_changes = finish_game(db, room, winner_id, is_draw)
 
             json_response(
                 self,
@@ -599,6 +998,7 @@ class ChessHandler(BaseHTTPRequestHandler):
                     "turn": new_turn,
                     "check": check_state == "check",
                     "status": status,
+                    "elo_changes": elo_changes,
                 },
             )
             return

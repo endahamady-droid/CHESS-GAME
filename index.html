@@ -36,14 +36,31 @@
       <section class="panel auth-panel reveal-card" id="authPanel">
         <p class="eyebrow">Player access</p>
         <h2>Enter the board</h2>
+        <div class="social-login">
+          <button class="secondary social-btn" data-provider="google">Continue with Google</button>
+          <button class="secondary social-btn" data-provider="apple">Continue with Apple</button>
+          <button class="secondary social-btn" data-provider="facebook">Continue with Facebook</button>
+        </div>
+        <div class="divider"><span>or</span></div>
         <div class="grid two">
           <label>
             Username
             <input id="username" autocomplete="username" placeholder="alice">
           </label>
           <label>
+            Email
+            <input id="email" type="email" autocomplete="email" placeholder="alice@email.com">
+          </label>
+          <label>
             Password
             <input id="password" type="password" autocomplete="current-password" placeholder="1234">
+          </label>
+          <label>
+            Starting ELO <span class="elo-help" title="ELO estimates your chess strength. 1200 is a friendly beginner/intermediate starting point.">?</span>
+            <span class="elo-row">
+              <input id="eloInput" type="range" min="400" max="2800" step="50" value="1200">
+              <strong id="eloValue">1200</strong>
+            </span>
           </label>
         </div>
         <div class="actions">
@@ -57,6 +74,7 @@
           <div>
             <p class="eyebrow">Logged in</p>
             <h2 id="playerName">Player</h2>
+            <p class="profile-line" id="profileLine">ELO: -</p>
           </div>
           <button class="secondary" id="logoutBtn">Logout</button>
         </div>
@@ -70,6 +88,23 @@
             </span>
           </label>
         </div>
+      </section>
+
+      <section class="panel profile-panel hidden reveal-card" id="profilePanel">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Profile</p>
+            <h2>Your chess identity</h2>
+          </div>
+          <span class="elo-chip" id="profileElo">ELO -</span>
+        </div>
+        <div class="profile-stats">
+          <span id="profileRecord">0W / 0L / 0D</span>
+          <span id="profileQuiz">Quiz level 1</span>
+          <span id="profileGames">0 games</span>
+        </div>
+        <h3>Recent games</h3>
+        <ol class="history-list" id="historyList"></ol>
       </section>
 
       <section class="lobby-extras" id="lobbyExtras">
@@ -206,6 +241,25 @@
 
       <p class="message" id="message"></p>
     </main>
+
+    <section class="quiz-modal hidden" id="quizModal" aria-modal="true" role="dialog">
+      <div class="quiz-modal-card panel">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Training path</p>
+            <h2 id="levelQuizTitle">Level 1 Quiz</h2>
+          </div>
+          <button class="secondary" id="skipQuizBtn">Skip</button>
+        </div>
+        <div class="level-progress">
+          <span id="levelProgressText">Question 1</span>
+          <div><i id="levelProgressBar"></i></div>
+        </div>
+        <p class="quiz-question" id="levelQuizQuestion">Loading...</p>
+        <div class="quiz-options" id="levelQuizOptions"></div>
+        <p class="quizFeedback" id="levelQuizFeedback"></p>
+      </div>
+    </section>
     <script src="app.js"></script>
   </body>
 </html>

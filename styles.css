@@ -448,6 +448,146 @@ button.secondary:hover,
   align-items: end;
 }
 
+.social-login {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0 16px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+}
+
+.elo-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.elo-row input {
+  padding: 0;
+}
+
+.elo-help {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 6px;
+  border-radius: 999px;
+  background: rgba(93, 242, 255, 0.16);
+  color: var(--primary);
+  cursor: help;
+  font-size: 0.78rem;
+}
+
+.profile-line {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.profile-stats span,
+.elo-chip {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text);
+  font-weight: 900;
+}
+
+.elo-chip {
+  color: var(--primary);
+}
+
+.history-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-list li {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  font-weight: 800;
+}
+
+.history-list .elo-up {
+  color: var(--success);
+}
+
+.history-list .elo-down {
+  color: var(--danger);
+}
+
+.quiz-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(3, 8, 16, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.quiz-modal-card {
+  width: min(760px, 100%);
+  max-height: min(90vh, 820px);
+  overflow: auto;
+}
+
+.level-progress {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.level-progress div {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.level-progress i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(135deg, var(--primary), var(--violet));
+  transition: width 0.25s var(--ease);
+}
+
 .lobby-extras {
   display: grid;
   gap: 18px;
@@ -1244,7 +1384,9 @@ th {
   }
 
   .quiz-options,
-  .stats-grid {
+  .stats-grid,
+  .social-login,
+  .profile-stats {
     grid-template-columns: 1fr;
   }
 
