@@ -35,6 +35,8 @@ function $(id) {
 function message(text, isError = false) {
   $("message").textContent = text;
   $("message").style.color = isError ? "#b91c1c" : "#166534";
+  $("message").classList.toggle("error", isError);
+  $("message").classList.toggle("ok", Boolean(text && !isError));
 }
 
 async function api(path, options = {}) {
@@ -76,6 +78,7 @@ function showPanels() {
   $("roomPanel").classList.toggle("hidden", !loggedIn || inGame);
   $("gamePanel").classList.toggle("hidden", !inGame);
   document.body.classList.toggle("game-view", inGame);
+  document.body.dataset.playerColor = state.color || "";
   if (loggedIn) $("playerName").textContent = state.player.username;
 }
 
@@ -120,10 +123,18 @@ function canMoveNow() {
   return Boolean(state.room && state.room.status === "playing" && state.room.turn === state.color);
 }
 
+function lastMoveSquares() {
+  const moves = state.room?.moves || [];
+  const lastMove = moves[moves.length - 1]?.move_text || "";
+  if (!/^[a-h][1-8][a-h][1-8]$/.test(lastMove)) return [];
+  return [lastMove.slice(0, 2), lastMove.slice(2, 4)];
+}
+
 function renderBoard() {
   const boardElement = $("board");
   boardElement.innerHTML = "";
   const board = currentBoard();
+  const lastSquares = lastMoveSquares();
 
   for (let row = 0; row < 8; row++) {
     for (let col = 0; col < 8; col++) {
@@ -131,6 +142,7 @@ function renderBoard() {
       const name = squareName(row, col);
       square.className = `square ${(row + col) % 2 === 0 ? "light" : "dark"}`;
       if (state.selected === name) square.classList.add("selected");
+      if (lastSquares.includes(name)) square.classList.add("last-move");
       if (!canMoveNow()) square.classList.add("locked");
       if (row === 7) square.dataset.file = files[col];
       if (col === 0) square.dataset.rank = String(8 - row);
@@ -146,6 +158,13 @@ function renderBoard() {
         if (pieceColor(piece) === state.color) square.classList.add("own-piece");
       }
 
+      if (row === 7) {
+        const fileLabel = document.createElement("span");
+        fileLabel.className = "coord-file";
+        fileLabel.textContent = files[col];
+        square.appendChild(fileLabel);
+      }
+
       square.title = name;
       square.addEventListener("click", (event) => selectSquare(name, event));
       boardElement.appendChild(square);
@@ -155,6 +174,8 @@ function renderBoard() {
 
 function renderRoom() {
   if (!state.room) return;
+  $("gamePanel").classList.toggle("room-waiting", state.room.status === "waiting");
+  $("gamePanel").classList.toggle("room-playing", state.room.status === "playing");
   $("roomCode").textContent = state.room.code;
   $("turnText").textContent =
     state.room.status === "waiting"
@@ -170,9 +191,21 @@ function renderRoom() {
 
   const movesList = $("movesList");
   movesList.innerHTML = "";
-  for (const move of state.room.moves || []) {
+  const moves = state.room.moves || [];
+  for (const [index, move] of moves.entries()) {
     const item = document.createElement("li");
-    item.textContent = move.move_text;
+    if (index === moves.length - 1) item.classList.add("latest-move");
+
+    const number = document.createElement("span");
+    number.className = "move-number";
+    number.textContent = String(index + 1);
+
+    const text = document.createElement("span");
+    text.className = "move-text";
+    text.textContent = move.move_text;
+
+    item.appendChild(number);
+    item.appendChild(text);
     movesList.appendChild(item);
   }
 
@@ -277,19 +310,42 @@ function renderChat() {
     const isMine = state.player && item.player_id === state.player.id;
     bubble.className = `chat-message ${isMine ? "mine" : "theirs"}`;
 
+    const avatar = document.createElement("span");
+    avatar.className = "chat-avatar";
+    avatar.textContent = (isMine ? "Y" : item.username || "?").slice(0, 1).toUpperCase();
+
+    const body = document.createElement("div");
+    body.className = "chat-bubble";
+
     const author = document.createElement("span");
     author.className = "chat-author";
-    author.textContent = isMine ? "You" : item.username;
+    const authorName = document.createElement("span");
+    authorName.textContent = isMine ? "You" : item.username;
+    const time = document.createElement("span");
+    time.className = "chat-time";
+    time.textContent = formatTime(item.created_at);
+    author.appendChild(authorName);
+    author.appendChild(time);
 
     const text = document.createElement("p");
     text.textContent = item.message;
 
-    bubble.appendChild(author);
-    bubble.appendChild(text);
+    body.appendChild(author);
+    body.appendChild(text);
+    bubble.appendChild(avatar);
+    bubble.appendChild(body);
     chatMessages.appendChild(bubble);
   }
 
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+  return new Date(timestamp * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 async function sendChat() {
@@ -438,7 +494,22 @@ $("chatInput").addEventListener("keydown", (event) => {
   }
 });
 
+function enhanceButtons() {
+  for (const element of document.querySelectorAll("button:not(.square), .button-link")) {
+    element.addEventListener("click", (event) => {
+      const ripple = document.createElement("span");
+      const rect = element.getBoundingClientRect();
+      ripple.className = "ripple";
+      ripple.style.left = `${event.clientX - rect.left}px`;
+      ripple.style.top = `${event.clientY - rect.top}px`;
+      element.appendChild(ripple);
+      window.setTimeout(() => ripple.remove(), 650);
+    });
+  }
+}
+
 checkServer();
 showPanels();
 renderBoard();
+enhanceButtons();
 startPolling();

@@ -4,17 +4,31 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>INFO7 Admin</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2308121f'/%3E%3Cpath d='M18 50h28l-3-8H21l-3 8Zm8-12h12l3-24-9 7-9-7 3 24Z' fill='%235df2ff'/%3E%3Cpath d='M22 50h24l-2-5H20l2 5Z' fill='%23b56cff'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
     <main class="app">
-      <section class="panel hero">
-        <p class="eyebrow">INFO7 Admin</p>
-        <h1>Manage accounts</h1>
-        <p class="muted">Disable players, enable players, and promote trusted users to admin.</p>
+      <section class="panel hero reveal-card">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">I7</div>
+          <div>
+            <p class="eyebrow">INFO7 Admin</p>
+            <p class="brand-subtitle">Control room</p>
+          </div>
+        </div>
+        <div class="hero-copy">
+          <h1>Manage accounts</h1>
+          <p class="muted">Disable players, enable players, and promote trusted users to admin.</p>
+        </div>
       </section>
 
-      <section class="panel" id="loginPanel">
+      <section class="panel reveal-card" id="loginPanel">
         <h2>Admin login</h2>
         <div class="grid two">
           <label>
@@ -32,7 +46,7 @@
         </div>
       </section>
 
-      <section class="panel hidden" id="adminPanel">
+      <section class="panel hidden reveal-card" id="adminPanel">
         <div class="topline">
           <div>
             <p class="eyebrow">Dashboard</p>
@@ -57,7 +71,7 @@
         </div>
       </section>
 
-      <section class="panel hidden" id="roomsPanel">
+      <section class="panel hidden reveal-card" id="roomsPanel">
         <h2>Recent rooms</h2>
         <div class="table-wrap">
           <table>
@@ -75,7 +89,7 @@
         </div>
       </section>
 
-      <section class="panel hidden" id="databasePanel">
+      <section class="panel hidden reveal-card" id="databasePanel">
         <h2>Database</h2>
         <div class="database-grid">
           <p><strong>Path:</strong> <span id="databasePath">-</span></p>

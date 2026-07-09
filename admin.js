@@ -11,6 +11,8 @@ function $(id) {
 function message(text, isError = false) {
   $("message").textContent = text;
   $("message").style.color = isError ? "#b91c1c" : "#166534";
+  $("message").classList.toggle("error", isError);
+  $("message").classList.toggle("ok", Boolean(text && !isError));
 }
 
 async function api(path, options = {}) {
@@ -142,6 +144,22 @@ async function loadDashboard() {
 
 $("loginBtn").addEventListener("click", login);
 $("refreshBtn").addEventListener("click", loadDashboard);
+
+function enhanceButtons() {
+  for (const element of document.querySelectorAll("button, .button-link")) {
+    element.addEventListener("click", (event) => {
+      const ripple = document.createElement("span");
+      const rect = element.getBoundingClientRect();
+      ripple.className = "ripple";
+      ripple.style.left = `${event.clientX - rect.left}px`;
+      ripple.style.top = `${event.clientY - rect.top}px`;
+      element.appendChild(ripple);
+      window.setTimeout(() => ripple.remove(), 650);
+    });
+  }
+}
+
+enhanceButtons();
 
 if (state.token) {
   loadDashboard();

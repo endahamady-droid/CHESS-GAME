@@ -4,19 +4,38 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>INFO7 Online Chess</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%2308121f'/%3E%3Cpath d='M18 50h28l-3-8H21l-3 8Zm8-12h12l3-24-9 7-9-7 3 24Z' fill='%235df2ff'/%3E%3Cpath d='M22 50h24l-2-5H20l2 5Z' fill='%23b56cff'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
     <main class="app">
-      <section class="panel hero" id="heroPanel">
-        <p class="eyebrow">INFO7 Online Chess</p>
-        <h1>Play chess with your friends</h1>
-        <p class="muted">Create an account, share a room code, and play online. Moves are checked by your C++ chess logic on the server.</p>
-        <div class="server-status" id="serverStatus">Checking server...</div>
+      <section class="panel hero reveal-card" id="heroPanel">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">I7</div>
+          <div>
+            <p class="eyebrow">INFO7 Online Chess</p>
+            <p class="brand-subtitle">Multiplayer arena</p>
+          </div>
+        </div>
+        <div class="hero-copy">
+          <h1>Play chess with your friends</h1>
+          <p class="muted">Create an account, share a room code, and play online. Moves are checked by your C++ chess logic on the server.</p>
+        </div>
+        <div class="hero-meta">
+          <div class="server-status" id="serverStatus">Checking server...</div>
+          <span class="soft-pill">Live rooms</span>
+          <span class="soft-pill">C++ engine</span>
+        </div>
       </section>
 
-      <section class="panel auth-panel" id="authPanel">
-        <h2>Account</h2>
+      <section class="panel auth-panel reveal-card" id="authPanel">
+        <p class="eyebrow">Player access</p>
+        <h2>Enter the board</h2>
         <div class="grid two">
           <label>
             Username
@@ -33,7 +52,7 @@
         </div>
       </section>
 
-      <section class="panel room-panel hidden" id="roomPanel">
+      <section class="panel room-panel hidden reveal-card" id="roomPanel">
         <div class="topline">
           <div>
             <p class="eyebrow">Logged in</p>
@@ -54,11 +73,15 @@
       </section>
 
       <section class="game-layout hidden" id="gamePanel">
-        <section class="panel board-panel">
-          <div class="topline">
+        <section class="panel board-panel reveal-card">
+          <div class="topline game-topline">
             <div>
-              <p class="eyebrow">Room <span id="roomCode">------</span></p>
+              <p class="eyebrow room-label">Room <span class="room-badge" id="roomCode">------</span></p>
               <h2 id="turnText">Waiting...</h2>
+              <div class="waiting-line">
+                <span class="status-dot"></span>
+                <span>Match status synchronized</span>
+              </div>
             </div>
             <div class="game-actions">
               <button class="secondary" id="leaveRoomBtn">Back to lobby</button>
@@ -70,24 +93,43 @@
           </div>
         </section>
 
-        <aside class="panel side-panel">
-          <h2>Game</h2>
-          <p id="colorText" class="status-line">Your color: -</p>
-          <p id="statusText" class="status-line">Status: -</p>
-          <label>
-            Manual move
-            <span class="join-row">
-              <input id="manualMove" maxlength="4" placeholder="e2e4">
-              <button id="sendMoveBtn">Send</button>
-            </span>
-          </label>
-          <h3>Moves</h3>
-          <ol id="movesList" class="moves"></ol>
+        <aside class="panel side-panel reveal-card">
+          <div class="side-header">
+            <p class="eyebrow">Control center</p>
+            <h2>Game</h2>
+          </div>
+          <div class="status-card">
+            <div class="status-icon">C</div>
+            <p id="colorText" class="status-line">Your color: -</p>
+          </div>
+          <div class="status-card">
+            <span class="status-dot"></span>
+            <p id="statusText" class="status-line">Status: -</p>
+          </div>
+          <div class="manual-card">
+            <label>
+              Manual move
+              <span class="join-row">
+                <input id="manualMove" maxlength="4" placeholder="e2e4">
+                <button id="sendMoveBtn">Send</button>
+              </span>
+            </label>
+          </div>
+          <div class="moves-card">
+            <div class="card-head">
+              <h3>Moves</h3>
+              <span class="mini-label">Timeline</span>
+            </div>
+            <ol id="movesList" class="moves"></ol>
+          </div>
 
           <div class="chat-box">
             <div class="chat-head">
-              <h3>Chat</h3>
-              <span id="chatStatus">Room chat</span>
+              <div>
+                <h3>Chat</h3>
+                <span id="chatStatus">Room chat</span>
+              </div>
+              <span class="typing-indicator"><i></i><i></i><i></i></span>
             </div>
             <div class="chat-messages" id="chatMessages"></div>
             <div class="chat-input-row">
