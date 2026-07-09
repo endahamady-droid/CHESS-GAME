@@ -523,33 +523,30 @@ button.secondary:hover,
   color: var(--danger);
 }
 
-.twofa-login,
-.twofa-card,
-.twofa-setup {
+.quick-play-card {
   display: grid;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.055);
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top right, rgba(93, 242, 255, 0.18), transparent 46%),
+    rgba(255, 255, 255, 0.065);
+  box-shadow: 0 0 34px rgba(93, 242, 255, 0.12);
 }
 
-.twofa-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+.quick-play-card h3,
+.quick-play-card p {
+  margin-bottom: 0;
 }
 
-.twofa-setup code {
-  display: block;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(0, 0, 0, 0.24);
-  color: var(--primary);
-  font-weight: 900;
-  overflow-wrap: anywhere;
+#playOnlineBtn {
+  min-width: 180px;
+  min-height: 62px;
+  font-size: 1.05rem;
 }
 
 .quiz-modal {
@@ -1388,6 +1385,10 @@ th {
     min-height: 310px;
   }
 
+  .quick-play-card {
+    grid-template-columns: 1fr;
+  }
+
   .quiz-options,
   .stats-grid,
   .profile-stats {
@@ -1400,13 +1401,15 @@ th {
 
   .topline,
   .game-actions,
-  .hero-meta {
+  .hero-meta,
+  .quick-play-card {
     align-items: stretch;
     flex-direction: column;
   }
 
   .game-actions,
   .game-actions button,
+  #playOnlineBtn,
   .join-row button {
     width: 100%;
   }

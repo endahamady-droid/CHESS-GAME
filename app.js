@@ -502,16 +502,12 @@ function updateProfileUI() {
   $("profileRecord").textContent = `${state.player.wins || 0}W / ${state.player.losses || 0}L / ${state.player.draws || 0}D`;
   $("profileQuiz").textContent = `Quiz level ${state.player.quiz_level_reached || 1}`;
   $("profileGames").textContent = `${state.player.games_played || 0} games`;
-  $("twofaStatus").textContent = `2FA status: ${state.player.twofa_enabled ? "on" : "off"}`;
-  $("setup2faBtn").classList.toggle("hidden", Boolean(state.player.twofa_enabled));
-  $("disable2faBtn").classList.toggle("hidden", !state.player.twofa_enabled);
 }
 
 async function completeLogin(data) {
   state.token = data.token;
   state.player = data.player;
   saveSession();
-  $("twofaLoginPanel").classList.add("hidden");
   if (data.player.is_admin) {
     storage.setItem("info7_admin_token", data.token);
     window.location.href = "/admin.html";
@@ -550,30 +546,6 @@ $("loginBtn").addEventListener("click", async () => {
         password: $("password").value,
       }),
     });
-    if (data.requires_2fa) {
-      storage.setItem("info7_2fa_challenge", data.challenge);
-      $("twofaLoginPanel").classList.remove("hidden");
-      $("twofaLoginCode").focus();
-      message("Enter your authenticator code.");
-      return;
-    }
-    await completeLogin(data);
-  } catch (error) {
-    message(error.message, true);
-  }
-});
-
-$("twofaLoginBtn").addEventListener("click", async () => {
-  try {
-    const data = await api("/api/login/2fa", {
-      method: "POST",
-      body: JSON.stringify({
-        challenge: storage.getItem("info7_2fa_challenge"),
-        code: $("twofaLoginCode").value,
-      }),
-    });
-    storage.removeItem("info7_2fa_challenge");
-    $("twofaLoginCode").value = "";
     await completeLogin(data);
   } catch (error) {
     message(error.message, true);
@@ -652,6 +624,27 @@ $("sendMoveBtn").addEventListener("click", () => {
   sendMove(move);
 });
 
+$("playOnlineBtn").addEventListener("click", async () => {
+  const button = $("playOnlineBtn");
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "Finding match...";
+  try {
+    const room = await api("/api/matchmaking", { method: "POST", body: "{}" });
+    state.roomCode = room.code;
+    state.color = room.color;
+    saveSession();
+    showPanels();
+    startPolling();
+    message(room.matched ? `Match found. Room ${room.code}.` : "Waiting for an online opponent...");
+  } catch (error) {
+    message(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = oldText;
+  }
+});
+
 $("sendChatBtn").addEventListener("click", sendChat);
 $("chatInput").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
@@ -677,58 +670,6 @@ $("joinCode").addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
     $("joinRoomBtn").click();
-  }
-});
-
-$("twofaLoginCode").addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    $("twofaLoginBtn").click();
-  }
-});
-
-$("setup2faBtn").addEventListener("click", async () => {
-  try {
-    const data = await api("/api/2fa/setup", { method: "GET" });
-    $("twofaSecretText").textContent = data.manual_code;
-    $("twofaSetupPanel").classList.remove("hidden");
-    message("Add the key to your authenticator app, then enter the 6-digit code.");
-  } catch (error) {
-    message(error.message, true);
-  }
-});
-
-$("enable2faBtn").addEventListener("click", async () => {
-  try {
-    const data = await api("/api/2fa/enable", {
-      method: "POST",
-      body: JSON.stringify({ code: $("twofaEnableCode").value }),
-    });
-    state.player = data.player;
-    saveSession();
-    $("twofaEnableCode").value = "";
-    $("twofaSetupPanel").classList.add("hidden");
-    updateProfileUI();
-    message("2FA enabled.");
-  } catch (error) {
-    message(error.message, true);
-  }
-});
-
-$("disable2faBtn").addEventListener("click", async () => {
-  const code = window.prompt("Enter your authenticator code to disable 2FA:");
-  if (!code) return;
-  try {
-    const data = await api("/api/2fa/disable", {
-      method: "POST",
-      body: JSON.stringify({ code }),
-    });
-    state.player = data.player;
-    saveSession();
-    updateProfileUI();
-    message("2FA disabled.");
-  } catch (error) {
-    message(error.message, true);
   }
 });
 

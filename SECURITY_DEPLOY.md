@@ -15,7 +15,7 @@ SESSION_TTL_SECONDS=43200
 
 The server runs migrations automatically at startup. It creates/updates:
 
-- `players` with `email`, `elo`, `provider`, `provider_id`, `quiz_level_reached`, `quiz_score`, `games_played`, `twofa_secret`, `twofa_enabled`
+- `players` with `email`, `elo`, `provider`, `provider_id`, `quiz_level_reached`, `quiz_score`, `games_played`
 - `sessions`
 - `rooms`
 - `moves`
@@ -25,22 +25,13 @@ The server runs migrations automatically at startup. It creates/updates:
 
 With `DATABASE_URL`, accounts, ELO, quiz progress, and match history survive redeploys.
 
-## Two-factor authentication
+## Login
 
-Social login has been removed. Users can secure the classic username/password login with TOTP 2FA.
-
-Flow:
-
-1. Login with username/password.
-2. In Profile, click `Set up 2FA`.
-3. Add the manual key to Google Authenticator, Authy, Microsoft Authenticator, or another TOTP app.
-4. Enter the 6-digit code to enable 2FA.
-5. Future logins require password + authenticator code.
+Social login and 2FA are disabled. Users log in with the classic username/password account only.
 
 ## Security included
 
 - bcrypt password hashes, cost 12
-- TOTP 2FA for classic login
 - HTTP-only session cookie plus legacy bearer token compatibility
 - session expiration
 - parameterized SQL queries

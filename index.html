@@ -61,14 +61,6 @@
           <button id="loginBtn">Login</button>
           <button class="secondary" id="registerBtn">Create account</button>
         </div>
-        <div class="twofa-login hidden" id="twofaLoginPanel">
-          <p class="eyebrow">Two-factor required</p>
-          <label>
-            Authenticator code
-            <input id="twofaLoginCode" inputmode="numeric" maxlength="6" placeholder="123456">
-          </label>
-          <button id="twofaLoginBtn">Verify 2FA</button>
-        </div>
       </section>
 
       <section class="panel room-panel hidden reveal-card" id="roomPanel">
@@ -79,6 +71,14 @@
             <p class="profile-line" id="profileLine">ELO: -</p>
           </div>
           <button class="secondary" id="logoutBtn">Logout</button>
+        </div>
+        <div class="quick-play-card">
+          <div>
+            <p class="eyebrow">Fast match</p>
+            <h3>Play online now</h3>
+            <p class="muted">Join the first waiting player, or start a public match instantly.</p>
+          </div>
+          <button id="playOnlineBtn">Play online</button>
         </div>
         <div class="grid two">
           <button id="createRoomBtn">Create room</button>
@@ -104,22 +104,6 @@
           <span id="profileRecord">0W / 0L / 0D</span>
           <span id="profileQuiz">Quiz level 1</span>
           <span id="profileGames">0 games</span>
-        </div>
-        <div class="twofa-card">
-          <div>
-            <h3>Two-factor authentication</h3>
-            <p class="muted" id="twofaStatus">2FA status: off</p>
-          </div>
-          <div class="twofa-actions">
-            <button class="secondary" id="setup2faBtn">Set up 2FA</button>
-            <button class="secondary" id="disable2faBtn">Disable 2FA</button>
-          </div>
-          <div class="twofa-setup hidden" id="twofaSetupPanel">
-            <p class="muted">Add this manual key to Google Authenticator, Authy, or Microsoft Authenticator, then enter the 6-digit code.</p>
-            <code id="twofaSecretText">-</code>
-            <input id="twofaEnableCode" inputmode="numeric" maxlength="6" placeholder="Code from app">
-            <button id="enable2faBtn">Enable 2FA</button>
-          </div>
         </div>
         <h3>Recent games</h3>
         <ol class="history-list" id="historyList"></ol>
