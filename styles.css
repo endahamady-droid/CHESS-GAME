@@ -455,6 +455,26 @@ button.secondary:hover,
   margin-bottom: 16px;
 }
 
+.social-btn.provider-missing {
+  opacity: 0.68;
+  border-style: dashed;
+}
+
+.social-feedback {
+  min-height: 22px;
+  margin: -4px 0 14px;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.social-feedback.error {
+  color: var(--warning);
+}
+
+.social-feedback.ok {
+  color: var(--success);
+}
+
 .divider {
   display: flex;
   align-items: center;

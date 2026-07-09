@@ -77,6 +77,12 @@ const levelQuizState = {
   questions: [],
 };
 
+const oauthProviders = {
+  google: false,
+  apple: false,
+  facebook: false,
+};
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -86,6 +92,13 @@ function message(text, isError = false) {
   $("message").style.color = isError ? "#b91c1c" : "#166534";
   $("message").classList.toggle("error", isError);
   $("message").classList.toggle("ok", Boolean(text && !isError));
+}
+
+function socialMessage(text, isError = false) {
+  $("socialFeedback").textContent = text;
+  $("socialFeedback").classList.toggle("error", isError);
+  $("socialFeedback").classList.toggle("ok", Boolean(text && !isError));
+  message(text, isError);
 }
 
 async function api(path, options = {}) {
@@ -461,6 +474,26 @@ async function checkServer() {
   }
 }
 
+async function loadOAuthProviders() {
+  try {
+    const data = await api("/api/auth/providers", { method: "GET" });
+    Object.assign(oauthProviders, data);
+    for (const button of document.querySelectorAll(".social-btn")) {
+      const provider = button.dataset.provider;
+      const configured = Boolean(oauthProviders[provider]);
+      button.classList.toggle("provider-missing", !configured);
+      button.title = configured
+        ? `Continue with ${provider}`
+        : `${provider} login needs OAuth keys in Render first`;
+    }
+    if (!oauthProviders.google && !oauthProviders.apple && !oauthProviders.facebook) {
+      socialMessage("Social login is not configured yet. Use username/password for now.", true);
+    }
+  } catch {
+    socialMessage("Could not check social login providers. Use username/password for now.", true);
+  }
+}
+
 async function loadProfile() {
   if (!state.token) return;
   try {
@@ -651,6 +684,16 @@ $("joinCode").addEventListener("keydown", (event) => {
 for (const button of document.querySelectorAll(".social-btn")) {
   button.addEventListener("click", async () => {
     const provider = button.dataset.provider;
+    if (!oauthProviders[provider]) {
+      socialMessage(
+        `${provider} login is not active yet. Add ${provider.toUpperCase()}_CLIENT_ID and ${provider.toUpperCase()}_CLIENT_SECRET in Render first.`,
+        true,
+      );
+      return;
+    }
+    const originalText = button.textContent;
+    button.textContent = "Setting up...";
+    button.disabled = true;
     try {
       const response = await fetch(`/api/auth/${provider}/start`, { method: "GET", credentials: "include" });
       const data = await response.json();
@@ -658,9 +701,12 @@ for (const button of document.querySelectorAll(".social-btn")) {
         window.location.href = data.redirect_url;
         return;
       }
-      message(data.error || `${provider} login is not configured yet.`, true);
+      socialMessage(data.message || data.error || `${provider} login is not configured yet.`, true);
     } catch (error) {
-      message(error.message, true);
+      socialMessage(error.message, true);
+    } finally {
+      button.textContent = originalText;
+      button.disabled = false;
     }
   });
 }
@@ -887,6 +933,7 @@ function observeScrollReveals() {
 }
 
 checkServer();
+loadOAuthProviders();
 showPanels();
 renderBoard();
 enhanceButtons();
